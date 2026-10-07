@@ -16,3 +16,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Neodroid"
 include(":core")
+if (file("scratch").exists()) {
+    include(":scratch")
+}
