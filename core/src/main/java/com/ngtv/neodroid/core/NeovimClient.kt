@@ -2,7 +2,17 @@ package com.ngtv.neodroid.core
 
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 import org.msgpack.core.MessagePack
 import org.msgpack.core.MessagePacker
@@ -10,16 +20,43 @@ import org.msgpack.core.MessagePacker
 
 class NeovimClient(
     private val input: InputStream,
-    private val output: OutputStream
+    // TODO: output may be unsafe for concurrent writes. Mutex?
+    private val output: OutputStream,
+    private val scope: CoroutineScope
 ) {
+    private val packer = MessagePack.newDefaultPacker(output)
     private var MessageId = AtomicInteger(0)
-
-    // generic call
-    // TODO: return promise and complete with a reading coroutine
-    fun call(method_name: String, params: List<Any?>) {
-        val id = MessageId.getAndIncrement().toUInt()
-        MessagePack.newDefaultPacker(output).use { packer ->
-            packer.packRequest(id, method_name, params)
+    private val pending =
+        ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
+    // reader to complete promises
+    private val readerJob = scope.launch(Dispatchers.IO) {
+        MessagePack.newDefaultUnpacker(input).use { unpacker ->
+            while (currentCoroutineContext().isActive) {
+                when (val message = unpacker.unpackRpcMessage()) {
+                    is RpcResponse -> {
+                        pending.remove(message.msgid)?.complete(message)
+                    }
+                    is RpcNotification -> {
+                        // handle notification
+                        // leave NOP for now
+                    }
+                    is RpcRequest -> {
+                        // handle request
+                        error("not implemented")
+                    }
+                }
+            }
         }
+    }
+
+    // generic async call
+    // TODO: return promise and complete with a reading coroutine
+    fun call(method_name: String, params: List<Any?>): CompletableDeferred<RpcResponse> {
+        val id = MessageId.getAndIncrement().toUInt()
+        val deferred = CompletableDeferred<RpcResponse>()
+        pending[id] = deferred
+        packer.packRpcMessage(RpcRequest(id, method_name, params))
+        packer.flush()
+        return deferred
     }
 }

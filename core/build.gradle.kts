@@ -4,6 +4,7 @@ plugins {
 
 dependencies {
     implementation("org.msgpack:msgpack-core:0.9.12")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }
 
 kotlin {

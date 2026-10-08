@@ -1,9 +1,8 @@
 package com.ngtv.neodroid.core
 
-import org.msgpack.core.MessagePack
+import org.msgpack.core.MessageFormat
 import org.msgpack.core.MessagePacker
 import org.msgpack.core.MessageUnpacker
-import org.msgpack.core.MessageFormat
 
 /*
  * MessagePack-RPC Protocol
@@ -57,7 +56,9 @@ private fun MessagePacker.packAny(value: Any?) {
 
         is List<*> -> {
             packArrayHeader(value.size)
-            value.forEach { packAny(it) }
+            value.forEach {
+                packAny(it)
+            }
         }
 
         is Map<*, *> -> {
@@ -105,7 +106,9 @@ private fun MessageUnpacker.unpackAny(): Any? {
         MessageFormat.BIN16,
         MessageFormat.BIN32 -> {
             val size = unpackBinaryHeader()
-            ByteArray(size).also { readPayload(it) }
+            ByteArray(size).also {
+                readPayload(it)
+            }
         }
 
         MessageFormat.FIXARRAY,
@@ -130,34 +133,78 @@ private fun MessageUnpacker.unpackAny(): Any? {
             }
         }
 
-        else -> error("Unsupported MessagePack type: ${getNextFormat()}")
+        else -> error(
+            "Unsupported MessagePack type: ${getNextFormat()}"
+        )
     }
 }
 
 
-fun MessagePacker.packRequest(
-    msgid: UInt,
-    method: String,
-    params: List<Any?>
-) {
-    packArrayHeader(4)
-    packInt(0)
-    packLong(msgid.toLong())
-    packString(method)
-    packAny(params)
+private const val REQUEST = 0
+private const val RESPONSE = 1
+private const val NOTIFICATION = 2
+
+
+fun MessagePacker.packRpcMessage(message: RpcMessage) {
+    when (message) {
+        is RpcRequest -> {
+            packArrayHeader(4)
+            packInt(REQUEST)
+
+            packLong(message.msgid.toLong())
+            packString(message.method)
+            packAny(message.params)
+        }
+
+        is RpcResponse -> {
+            packArrayHeader(4)
+            packInt(RESPONSE)
+
+            packLong(message.msgid.toLong())
+            packAny(message.error)
+            packAny(message.result)
+        }
+
+        is RpcNotification -> {
+            packArrayHeader(3)
+            packInt(NOTIFICATION)
+
+            packString(message.method)
+            packAny(message.params)
+        }
+    }
+}
+
+fun MessageUnpacker.unpackRpcMessage(): RpcMessage {
+    val size = unpackArrayHeader()
+    check(size >= 1) {
+        "RPC message array cannot be empty"
+    }
+
+    return when (unpackInt()) {
+        REQUEST ->
+            unpackRequest(size)
+
+        RESPONSE ->
+            unpackResponse(size)
+
+        NOTIFICATION ->
+            unpackNotification(size)
+
+        else ->
+            error("Invalid RPC message type")
+    }
 }
 
 
-fun MessageUnpacker.unpackRequest(): RpcRequest {
-    check(unpackArrayHeader() == 4) {
-        "request expects array of 4 elements"
-    }
-    check(unpackInt() == 0) {
-        "invalid type for request"
+private fun MessageUnpacker.unpackRequest(size: Int): RpcRequest {
+    check(size == 4) {
+        "request expects array of 4 elements, got $size"
     }
 
     val msgid = unpackLong().toUInt()
     val method = unpackString()
+
     val params = unpackAny() as? List<*>
         ?: error("Invalid request parameters")
 
@@ -170,25 +217,9 @@ fun MessageUnpacker.unpackRequest(): RpcRequest {
 }
 
 
-fun MessagePacker.packRespond(
-    msgid: UInt,
-    error: Any?,
-    result: Any?
-) {
-    packArrayHeader(4)
-    packInt(1)
-    packLong(msgid.toLong())
-    packAny(error)
-    packAny(result)
-}
-
-
-fun MessageUnpacker.unpackResponse(): RpcResponse {
-    check(unpackArrayHeader() == 4) {
-        "respond expects array of 4 elements"
-    }
-    check(unpackInt() == 1) {
-        "invalid type for respond"
+private fun MessageUnpacker.unpackResponse(size: Int): RpcResponse {
+    check(size == 4) {
+        "response expects array of 4 elements, got $size"
     }
 
     return RpcResponse(
@@ -199,28 +230,15 @@ fun MessageUnpacker.unpackResponse(): RpcResponse {
 }
 
 
-fun MessagePacker.packNotification(
-    method: String,
-    params: List<Any?>
-) {
-    packArrayHeader(3)
-    packInt(2)
-    packString(method)
-    packAny(params)
-}
-
-
-fun MessageUnpacker.unpackNotification(): RpcNotification {
-    check(unpackArrayHeader() == 3) {
-        "notification expects array of 3 elements"
-    }
-    check(unpackInt() == 2) {
-        "invalid type for notification"
+private fun MessageUnpacker.unpackNotification(size: Int): RpcNotification {
+    check(size == 3) {
+        "notification expects array of 3 elements, got $size"
     }
 
     val method = unpackString()
+
     val params = unpackAny() as? List<*>
-        ?: error("invalid notification parameters")
+        ?: error("Invalid notification parameters")
 
     @Suppress("UNCHECKED_CAST")
     return RpcNotification(
