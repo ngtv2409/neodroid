@@ -1,24 +1,25 @@
 package com.ngtv.neodroid.core
 
-import java.net.Socket
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicInteger
+
+import org.msgpack.core.MessagePack
+import org.msgpack.core.MessagePacker
+
 
 class NeovimClient(
-    private val host : String,
-    private val port : Int
-) : AutoCloseable {
-    private val socket = Socket(host, port)
-    private val input = socket.getInputStream()
-    private val output = socket.getOutputStream() 
+    private val input: InputStream,
+    private val output: OutputStream
+) {
+    private var MessageId = AtomicInteger(0)
 
-    private var nextMessageId = 0
-
-    fun call(method: String, params: List<Any?>): Any? {
-        val id = nextMessageId++
-        println("About to do stuff with $socket")
-        return null
-    }
-
-    override fun close() {
-        socket.close()
+    // generic call
+    // TODO: return promise and complete with a reading coroutine
+    fun call(method_name: String, params: List<Any?>) {
+        val id = MessageId.getAndIncrement().toUInt()
+        MessagePack.newDefaultPacker(output).use { packer ->
+            packer.packRequest(id, method_name, params)
+        }
     }
 }
