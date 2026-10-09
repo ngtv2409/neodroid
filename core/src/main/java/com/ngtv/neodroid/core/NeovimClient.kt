@@ -49,14 +49,19 @@ class NeovimClient(
         }
     }
 
-    // generic async call
-    // TODO: return promise and complete with a reading coroutine
-    fun call(method_name: String, params: List<Any?>): CompletableDeferred<RpcResponse> {
+    // send a request
+    fun send_request(method_name: String, params: List<Any?>)
+        : CompletableDeferred<RpcResponse> {
         val id = MessageId.getAndIncrement().toUInt()
         val deferred = CompletableDeferred<RpcResponse>()
         pending[id] = deferred
         packer.packRpcMessage(RpcRequest(id, method_name, params))
         packer.flush()
         return deferred
+    }
+
+    // A not so useful function that returns a raw response
+    suspend fun call(method: String, params: List<Any?>): RpcResponse {
+        return send_request(method, params).await()
     }
 }
