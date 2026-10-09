@@ -13,6 +13,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 import org.msgpack.core.MessagePack
 import org.msgpack.core.MessagePacker
@@ -28,6 +31,8 @@ class NeovimClient(
     private var MessageId = AtomicInteger(0)
     private val pending =
         ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
+    private val _notifications = MutableSharedFlow<RpcNotification>()
+    val notifications: Flow<RpcNotification> = _notifications.asSharedFlow()
     // reader to complete promises
     private val readerJob = scope.launch(Dispatchers.IO) {
         MessagePack.newDefaultUnpacker(input).use { unpacker ->
@@ -38,7 +43,7 @@ class NeovimClient(
                     }
                     is RpcNotification -> {
                         // handle notification
-                        // leave NOP for now
+                        _notifications.emit(message)
                     }
                     is RpcRequest -> {
                         // handle request

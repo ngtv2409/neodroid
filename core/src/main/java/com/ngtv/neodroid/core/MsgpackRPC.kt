@@ -133,6 +133,27 @@ private fun MessageUnpacker.unpackAny(): Any? {
             }
         }
 
+        MessageFormat.EXT8,
+        MessageFormat.EXT16,
+        MessageFormat.EXT32,
+        MessageFormat.FIXEXT1,
+        MessageFormat.FIXEXT2,
+        MessageFormat.FIXEXT4,
+        MessageFormat.FIXEXT8,
+        MessageFormat.FIXEXT16 -> {
+            val header = unpackExtensionTypeHeader()
+            val type = header.type
+            val size = header.length
+
+            val data = ByteArray(size)
+            readPayload(data)
+
+            mapOf(
+                "__ext_type" to type,
+                "__ext_data" to data
+            )
+        }
+
         else -> error(
             "Unsupported MessagePack type: ${getNextFormat()}"
         )
