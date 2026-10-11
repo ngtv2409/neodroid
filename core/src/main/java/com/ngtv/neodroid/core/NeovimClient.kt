@@ -65,6 +65,11 @@ fun <T> NvimResult<T>.getOrElse(fallback: (NvimAPIError) -> T): T =
         is NvimResult.Err -> fallback(error)
     }
 
+sealed interface NvimNotification {
+    data class Redraw(val events: List<NvimUiEvent>) : NvimNotification
+    data class Unknown(val raw: RpcNotification) : NvimNotification
+}
+
 class NeovimClient(
     private val input: InputStream,
     // TODO: output may be unsafe for concurrent writes. Mutex?
