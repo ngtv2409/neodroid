@@ -67,7 +67,7 @@ fun <T> NvimResult<T>.getOrElse(fallback: (NvimAPIError) -> T): T =
 
 sealed interface NvimNotification {
     data class Redraw(val events: List<NvimUiEvent>) : NvimNotification
-    data class Unknown(val raw: RpcNotification) : NvimNotification
+    data class Unclassified(val raw: RpcNotification) : NvimNotification
 }
 
 class NeovimClient(
@@ -80,8 +80,8 @@ class NeovimClient(
     private var MessageId = AtomicInteger(0)
     private val pending =
         ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
-    private val _notifications = MutableSharedFlow<RpcNotification>()
-    val notifications: Flow<RpcNotification> = _notifications.asSharedFlow()
+    private val _notifications = MutableSharedFlow<NvimNotification>()
+    val notifications: Flow<NvimNotification> = _notifications.asSharedFlow()
     // reader to complete promises
     private val readerJob = scope.launch(Dispatchers.IO) {
         MessagePack.newDefaultUnpacker(input).use { unpacker ->
@@ -91,8 +91,19 @@ class NeovimClient(
                         pending.remove(message.msgid)?.complete(message)
                     }
                     is RpcNotification -> {
-                        // handle notification
-                        _notifications.emit(message)
+                        val notif = when (message.method) {
+                            "redraw" -> {
+                                asNestedList(message.params)?.let { params ->
+                                    NvimNotification.Redraw(dispatchRedrawEvent(params))
+                                }
+                            }
+                            else -> {
+                                NvimNotification.Unclassified(message)
+                            }
+                        }
+                        if (notif != null) {
+                            _notifications.emit(notif)
+                        }
                     }
                     is RpcRequest -> {
                         // handle request
@@ -123,9 +134,16 @@ class NeovimClient(
         val response = call("nvim_ui_attach", listOf(width, height, options))
         if (response.error != null) {
             return NvimResult.Err(NvimAPIError("ui_attach",
-                (response.error as? ArrayList<Any?>)?.get(0) as Long,
-                (response.error as? ArrayList<Any?>)?.get(1) as String))
+                (response.error as? List<Any?>)?.get(0) as Long,
+                (response.error as? List<Any?>)?.get(1) as String))
         }
         return NvimResult.Ok(Unit)
     }
+}
+
+private fun asNestedList(value: Any?): List<List<*>>? {
+    if (value !is List<*>) return null
+    if (!value.all { it is List<*> }) return null
+
+    return value.filterIsInstance<List<*>>()
 }
