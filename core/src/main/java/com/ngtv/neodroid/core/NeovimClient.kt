@@ -2,8 +2,10 @@ package com.ngtv.neodroid.core
 
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.Closeable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.ArrayList
 
 import kotlinx.coroutines.CompletableDeferred
@@ -14,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -46,9 +49,26 @@ class NeovimClient(
     private val input: InputStream,
     // TODO: output may be unsafe for concurrent writes. Mutex?
     private val output: OutputStream,
-    private val scope: CoroutineScope
-) {
-    private val packer = MessagePack.newDefaultPacker(output)
+    private val parentScope: CoroutineScope
+) : Closeable {
+
+    private val closed = AtomicBoolean(false)
+
+    // prevent packer and unpacker from closing the streams
+    private class NonClosingOutputStream(out: OutputStream) : java.io.FilterOutputStream(out) {
+        override fun close() {
+            flush()
+        }
+    }
+
+    private class NonClosingInputStream(input: InputStream) : java.io.FilterInputStream(input) {
+        override fun close() {}
+    }
+
+    private val clientJob = SupervisorJob(parentScope.coroutineContext[Job])
+    val scope = CoroutineScope(parentScope.coroutineContext + clientJob)
+
+    private val packer = MessagePack.newDefaultPacker(NonClosingOutputStream(output))
     private var MessageId = AtomicInteger(0)
     private val pending =
         ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
@@ -56,7 +76,7 @@ class NeovimClient(
     val notifications: Flow<NvimNotification> = _notifications.asSharedFlow()
     // reader to complete promises
     private val readerJob = scope.launch(Dispatchers.IO) {
-        MessagePack.newDefaultUnpacker(input).use { unpacker ->
+        MessagePack.newDefaultUnpacker(NonClosingInputStream(input)).use { unpacker ->
             while (currentCoroutineContext().isActive) {
                 when (val message = unpacker.unpackRpcMessage()) {
                     is RpcResponse -> {
@@ -85,6 +105,17 @@ class NeovimClient(
             }
         }
     }
+
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+
+        clientJob.cancel()
+        pending.values.forEach { it.cancel() }
+        pending.clear()
+
+        runCatching { packer.close() }
+    }
+
 
     // send a request
     fun send_request(method_name: String, params: List<Any?>)
