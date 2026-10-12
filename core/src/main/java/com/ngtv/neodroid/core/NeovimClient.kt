@@ -39,6 +39,10 @@ class NvimAPIException(
     cause
 )
 
+class NvimConnectionException(
+    message: String,
+    cause: Throwable? = null
+) : RuntimeException(message, cause)
 
 sealed interface NvimNotification {
     data class Redraw(val events: List<NvimUiEvent>) : NvimNotification
@@ -78,7 +82,15 @@ class NeovimClient(
     private val readerJob = scope.launch(Dispatchers.IO) {
         MessagePack.newDefaultUnpacker(NonClosingInputStream(input)).use { unpacker ->
             while (currentCoroutineContext().isActive) {
-                when (val message = unpacker.unpackRpcMessage()) {
+                val message = try {
+                    unpacker.unpackRpcMessage()
+                } catch (e: RpcFormatException) {
+                    // discard
+                    // TODO: log
+                } catch (e: RpcIOException) {
+                    throw NvimConnectionException("input stream closed or EOF")
+                }
+                when (message) {
                     is RpcResponse -> {
                         pending.remove(message.msgid)?.complete(message)
                     }

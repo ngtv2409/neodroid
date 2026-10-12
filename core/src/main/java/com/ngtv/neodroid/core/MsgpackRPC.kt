@@ -3,6 +3,7 @@ package com.ngtv.neodroid.core
 import org.msgpack.core.MessageFormat
 import org.msgpack.core.MessagePacker
 import org.msgpack.core.MessageUnpacker
+import java.util.ArrayList
 
 /*
  * MessagePack-RPC Protocol
@@ -196,74 +197,101 @@ fun MessagePacker.packRpcMessage(message: RpcMessage) {
     }
 }
 
+class RpcIOException(
+    message: String,
+    cause: Throwable? = null
+) : RuntimeException(message, cause)
+class RpcFormatException(
+    message: String,
+    cause: Throwable? = null
+) : RuntimeException(message, cause)
+
 fun MessageUnpacker.unpackRpcMessage(): RpcMessage {
+    if (!hasNext()) {
+        // got EOF. Aka the socket is closed, or the stream is a file
+        throw RpcIOException("end-of-file reached")
+    }
+    val format = getNextFormat()
+
+    if (
+        format != MessageFormat.FIXARRAY &&
+        format != MessageFormat.ARRAY16 &&
+        format != MessageFormat.ARRAY32
+    ) {
+        throw RpcFormatException("expect message to be array. Got: msgpack.${format.name}")
+    }
+
     val size = unpackArrayHeader()
-    check(size >= 1) {
-        "RPC message array cannot be empty"
+    // pre validation to avoid reading an array too big
+    if (size != 3 && size != 4) {
+        // skip the entire array
+        skipValue(size)
+        throw RpcFormatException("invalid message size: $size. Should be 3 or 4")
+    }
+    // read the whole array
+    val type = unpackAny() as? Long
+        ?: throw RpcFormatException("message type must be an integer")
+
+    val fields = ArrayList<Any?>(size)
+    fields.add(type)
+
+    repeat(size - 1) {
+        fields.add(unpackAny())
     }
 
-    return when (unpackInt()) {
-        REQUEST ->
-            unpackRequest(size)
-
-        RESPONSE ->
-            unpackResponse(size)
-
-        NOTIFICATION ->
-            unpackNotification(size)
-
-        else ->
-            error("Invalid RPC message type")
-    }
+    return decodeRpcFields(fields)
 }
 
-
-private fun MessageUnpacker.unpackRequest(size: Int): RpcRequest {
-    check(size == 4) {
-        "request expects array of 4 elements, got $size"
+private fun decodeRpcFields(message: ArrayList<Any?>): RpcMessage {
+    require(message.size >= 1)
+    require(message[0] is Long)
+    val type = (message[0] as? Long)
+        ?.takeIf { it in 0L..2L }
+        ?.toInt()
+        ?: throw RpcFormatException("Invalid message type: ${message[0]}")
+    when (type) {
+        0 -> {
+            if (message.size != 4) {
+                throw RpcFormatException("message type 'request' must has length 4")
+            }
+            if(
+                message[1] is Long && message[2] is String && message[3] is List<*>
+            ) {
+                return RpcRequest(
+                    (message[1] as Long).toUInt(),
+                    message[2] as String, message[3] as List<Any?>
+                )
+            } else {
+                throw RpcFormatException("message type 'request' must have the form [0, int32, String, Array<Any?>]. Got: $message")
+            }
+        }
+        1 -> {
+            if (message.size != 4) {
+                throw RpcFormatException("message type 'response' must has length 4")
+            }
+            if(
+                message[1] is Long
+            ) {
+                return RpcResponse((message[1] as Long).toUInt(), message[2], message[3]
+                )
+            } else {
+                throw RpcFormatException("message type 'response' must have the form [1, int32, Any?, Any?]. Got: $message")
+            }
+        }
+        2 -> {
+            if (message.size != 3) {
+                throw RpcFormatException("message type 'notification' must has length 3")
+            }
+            if(
+                message[1] is String && message[2] is List<*>
+            ) {
+                return RpcNotification(message[1] as String, message[2] as List<Any?>)
+            } else {
+                throw RpcFormatException("message type 'notification' must have the form [2, String, Array<Any?>]. Got: $message")
+            }
+        }
+        else -> {
+            error("unreachable")
+        }
     }
-
-    val msgid = unpackLong().toUInt()
-    val method = unpackString()
-
-    val params = unpackAny() as? List<*>
-        ?: error("Invalid request parameters")
-
-    @Suppress("UNCHECKED_CAST")
-    return RpcRequest(
-        msgid = msgid,
-        method = method,
-        params = params as List<Any?>
-    )
-}
-
-
-private fun MessageUnpacker.unpackResponse(size: Int): RpcResponse {
-    check(size == 4) {
-        "response expects array of 4 elements, got $size"
-    }
-
-    return RpcResponse(
-        msgid = unpackLong().toUInt(),
-        error = unpackAny(),
-        result = unpackAny()
-    )
-}
-
-
-private fun MessageUnpacker.unpackNotification(size: Int): RpcNotification {
-    check(size == 3) {
-        "notification expects array of 3 elements, got $size"
-    }
-
-    val method = unpackString()
-
-    val params = unpackAny() as? List<*>
-        ?: error("Invalid notification parameters")
-
-    @Suppress("UNCHECKED_CAST")
-    return RpcNotification(
-        method = method,
-        params = params as List<Any?>
-    )
 }
