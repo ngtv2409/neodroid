@@ -21,7 +21,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import org.msgpack.core.MessagePack
 import org.msgpack.core.MessagePacker
 
-class NvimAPIError(
+class NvimException(
+    message: String,
+    cause: Throwable? = null
+) : RuntimeException(message, cause)
+
+class NvimAPIException(
     val method: String,
     val errorType: Long,
     message: String,
@@ -31,39 +36,6 @@ class NvimAPIError(
     cause
 )
 
-sealed interface NvimResult<out T> {
-    data class Ok<T>(val value: T) : NvimResult<T>
-    data class Err(val error: NvimAPIError) : NvimResult<Nothing>
-}
-
-fun <T> NvimResult<T>.Success(): Boolean {
-    return when (this) {
-        is NvimResult.Ok -> true
-        is NvimResult.Err -> false
-    }
-}
-fun <T> NvimResult<T>.Error(): Boolean {
-    return when (this) {
-        is NvimResult.Ok -> false
-        is NvimResult.Err -> true
-    }
-}
-fun <T> NvimResult<T>.getOptional(): T? {
-    return when (this) {
-        is NvimResult.Ok -> value
-        is NvimResult.Err -> null
-    }
-}
-fun <T> NvimResult<T>.getOrThrow(): T =
-    when (this) {
-        is NvimResult.Ok -> value
-        is NvimResult.Err -> throw error
-    }
-fun <T> NvimResult<T>.getOrElse(fallback: (NvimAPIError) -> T): T =
-    when (this) {
-        is NvimResult.Ok -> value
-        is NvimResult.Err -> fallback(error)
-    }
 
 sealed interface NvimNotification {
     data class Redraw(val events: List<NvimUiEvent>) : NvimNotification
@@ -130,14 +102,13 @@ class NeovimClient(
         return send_request(method, params).await()
     }
 
-    suspend fun ui_attach(width: Int, height: Int, options: Map<String, Any?>): NvimResult<Unit> {
+    suspend fun ui_attach(width: Int, height: Int, options: Map<String, Any?>) {
         val response = call("nvim_ui_attach", listOf(width, height, options))
         if (response.error != null) {
-            return NvimResult.Err(NvimAPIError("ui_attach",
+            throw NvimAPIException("ui_attach",
                 (response.error as? List<Any?>)?.get(0) as Long,
-                (response.error as? List<Any?>)?.get(1) as String))
+                (response.error as? List<Any?>)?.get(1) as String)
         }
-        return NvimResult.Ok(Unit)
     }
 }
 
