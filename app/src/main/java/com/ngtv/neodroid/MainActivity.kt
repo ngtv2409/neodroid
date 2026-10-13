@@ -31,11 +31,29 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.activity.viewModels
 
 /* Handle Main screen, add and manage SSH hosts */
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+
+    private val database by lazy {
+        AppDatabase.getInstance(applicationContext)
+    }
+
+    private val repository by lazy {
+        SSHHostRepository(database.SSHHostDao())
+    }
+
+    private val viewModelFactory by lazy {
+        SSHHostViewModelFactory(repository)
+    }
+
+    private val sshHostViewModel: SSHHostViewModel by viewModels {
+        viewModelFactory
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
