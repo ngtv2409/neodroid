@@ -192,6 +192,29 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
                 }
             )
         },
+        bottomBar = {
+            Row(
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    enabled = canSubmit,
+                    onClick = {
+                        onSubmit(SSHHostViewModel.InputModel(
+                            name = server_name.trim(),
+                            host_name = hostname.trim(),
+                            port = port_str.trim().toInt(),
+                            server_signature = if (server_signature.trim().isBlank()) {null} else {server_signature.trim()},
+                            username = username.trim()
+                        ))
+                        back()
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Submit")
+                }
+            }
+        }
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp)
@@ -224,6 +247,13 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
                     validator =  port_validator
                 )
                 ValidatedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = "Username",
+                    maxLength = null,
+                    validator = username_validator
+                )
+                ValidatedTextField(
                     value = server_signature,
                     onValueChange = { server_signature = it },
                     label = "Server signature (optional)",
@@ -232,35 +262,6 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
                         null // optional
                     }
                 )
-                ValidatedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = "Username",
-                    maxLength = null,
-                    validator = username_validator
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        enabled = canSubmit,
-                        onClick = {
-                            onSubmit(SSHHostViewModel.InputModel(
-                                name = server_name.trim(),
-                                host_name = hostname.trim(),
-                                port = port_str.trim().toInt(),
-                                server_signature = if (server_signature.trim().isBlank()) {null} else {server_signature.trim()},
-                                username = username.trim()
-                            ))
-                            back()
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Submit")
-                    }
-                }
             }
         }
     }
