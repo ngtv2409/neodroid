@@ -76,6 +76,14 @@ class SSHHostViewModel(
             initialValue = emptyList()
         )
 
+    data class InputModel(
+        val name: String,
+        val host_name: String,
+        val port: Int,
+        val server_signature: String?,
+        val username: String
+    )
+
     fun addHost(
         name: String,
         host_name: String,
@@ -97,6 +105,16 @@ class SSHHostViewModel(
                 username = username
             )
         }
+    }
+
+    fun addHost(input: InputModel) {
+        addHost(
+            name = input.name,
+            host_name = input.host_name,
+            port = input.port,
+            server_signature = input.server_signature,
+            username = input.username
+        )
     }
 
     fun deleteHost(host: SSHHostEntity) {
