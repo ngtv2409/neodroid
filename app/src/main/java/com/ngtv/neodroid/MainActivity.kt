@@ -78,7 +78,7 @@ fun AppNavigation(viewModel: SSHHostViewModel) {
         startDestination = "home",
     ) {
         composable("home") {
-            HomeScreen(
+            HomeScreen(viewModel,
                 onOpenHostAdd = { navController.navigate("hosts/new") }
             )
         }
@@ -92,7 +92,8 @@ fun AppNavigation(viewModel: SSHHostViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onOpenHostAdd: () -> Unit) {
+fun HomeScreen(viewModel: SSHHostViewModel, onOpenHostAdd: () -> Unit) {
+    val hosts by viewModel.hosts.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -116,6 +117,23 @@ fun HomeScreen(onOpenHostAdd: () -> Unit) {
         Box(
             modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp)
         ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text("Hosts", style = MaterialTheme.typography.titleMedium)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(
+                        items = hosts,
+                        key = { host -> host.id }
+                    ) { host ->
+                        SshHostItem(host)
+                    }
+                }
+            }
         }
     }
 }
@@ -300,4 +318,28 @@ fun ValidatedTextField(
             }
         }
     )
+}
+
+@Composable
+fun SshHostItem(
+    host: SSHHostEntity,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        ListItem(
+            headlineContent = { Text(host.name) },
+            supportingContent = { Text("${host.username}@${host.host_name} • ${host.port}") },
+            leadingContent = {
+                Text("⟩")
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent
+            )
+        )
+    }
 }
