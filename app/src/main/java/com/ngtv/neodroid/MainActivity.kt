@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
         AppDatabase.getInstance(applicationContext)
     }
 
-    private val repository by lazy {
+        private val repository by lazy {
         SSHHostRepository(database.SSHHostDao())
     }
 
@@ -63,14 +63,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                AppNavigation(sshHostViewModel)
+                MainNavigation(sshHostViewModel)
             }
         }
     }
 }
 
 @Composable
-fun AppNavigation(viewModel: SSHHostViewModel) {
+fun MainNavigation(viewModel: SSHHostViewModel) {
     val navController = rememberNavController()
 
     NavHost(
@@ -79,7 +79,8 @@ fun AppNavigation(viewModel: SSHHostViewModel) {
     ) {
         composable("home") {
             HomeScreen(viewModel,
-                onOpenHostAdd = { navController.navigate("hosts/new") }
+                onOpenHostAdd = { navController.navigate("hosts/new") },
+                onOpenDetail = { id -> navController.navigate("hosts/details/$id") }
             )
         }
         composable("hosts/new") {
@@ -87,12 +88,24 @@ fun AppNavigation(viewModel: SSHHostViewModel) {
                 navController.popBackStack()
             })
         }
+        composable("hosts/details/{hostId}") { backStackEntry ->
+            val hostId = backStackEntry.arguments?.getString("hostId")?.toInt()
+            if (hostId == null) {
+                navController.popBackStack()
+            } else {
+                HostDetailScreen(viewModel, hostId)
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: SSHHostViewModel, onOpenHostAdd: () -> Unit) {
+fun HomeScreen(
+    viewModel: SSHHostViewModel,
+    onOpenHostAdd: () -> Unit,
+    onOpenDetail: (Int) -> Unit
+) {
     val hosts by viewModel.hosts.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
@@ -130,7 +143,7 @@ fun HomeScreen(viewModel: SSHHostViewModel, onOpenHostAdd: () -> Unit) {
                         items = hosts,
                         key = { host -> host.id }
                     ) { host ->
-                        SshHostItem(host)
+                        SshHostItem(host, { clicked_host -> onOpenDetail(clicked_host.id) })
                     }
                 }
             }
@@ -324,9 +337,12 @@ fun ValidatedTextField(
 @Composable
 fun SshHostItem(
     host: SSHHostEntity,
+    onClick: (SSHHostEntity) -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable {
+            onClick(host)
+        },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
@@ -342,5 +358,154 @@ fun SshHostItem(
                 containerColor = Color.Transparent
             )
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HostDetailScreen(viewModel: SSHHostViewModel, hostId: Int) {
+    val _host by viewModel.getHostById(hostId).collectAsStateWithLifecycle(initialValue = null)
+    val host = _host ?: return
+
+    var server_name by remember { mutableStateOf(host.name) }
+    var hostname by remember { mutableStateOf(host.host_name) }
+    var port_str by remember { mutableStateOf(host.port.toString()) }
+    var server_signature by remember { mutableStateOf(host.server_signature ?: "") }
+    var username by remember { mutableStateOf(host.username) }
+
+    val server_name_validator = { value: String ->
+        when {
+            value.isBlank() -> "Server name is required"
+            else -> null
+        }
+    }
+    val host_name_validator = { value: String ->
+        when {
+            value.isBlank() -> "Host name is required"
+            else -> null
+        }
+    }
+    val port_validator = { value: String ->
+        val conv = value.toIntOrNull();
+        when {
+            value.isBlank() -> "Port is required"
+            conv == null -> "Port must be an integer between 1 and 65535"
+            !(conv in 1..65535) -> "Port must be an integer between 1 and 65535"
+            else -> null
+        }
+    }
+    val username_validator = { value: String ->
+        when {
+            value.isBlank() -> "Username is required"
+            else -> null
+        }
+    }
+
+    val canSubmit = server_name_validator(server_name) == null &&
+                    host_name_validator(hostname) == null &&
+                    port_validator(port_str) == null &&
+                    username_validator(username) == null
+    val isChanged = server_name != host.name ||
+                    hostname != host.host_name ||
+                    port_str != host.port.toString() ||
+                    username != host.username ||
+                    server_signature != (host.server_signature ?: "")
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.primary,
+                ),
+                title = {
+                    Text("${host.name}")
+                }
+            )
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                    },
+                ) {
+                    Text("Connect")
+                }
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = canSubmit && isChanged,
+                    onClick = {
+                        viewModel.updateHost(
+                            host.copy(
+                                name = server_name.trim(),
+                                host_name = hostname.trim(),
+                                port = port_str.trim().toInt(),
+                                server_signature = if (server_signature.trim().isBlank()) {
+                                    null
+                                } else {
+                                    server_signature.trim()
+                                },
+                                username = username.trim()
+                            )
+                        )
+                    },
+                ) {
+                    Text("Save")
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                ValidatedTextField(
+                    value = server_name,
+                    onValueChange = { server_name = it },
+                    label = "Server name*",
+                    maxLength = 100,
+                    validator = server_name_validator
+                )
+                ValidatedTextField(
+                    value = hostname,
+                    onValueChange = { hostname = it },
+                    label = "Host name*",
+                    maxLength = null,
+                    validator = host_name_validator
+                )
+                ValidatedTextField(
+                    value = port_str,
+                    onValueChange = {
+                        port_str = it
+                    },
+                    label = "Port*",
+                    maxLength = null,
+                    validator =  port_validator
+                )
+                ValidatedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = "Username",
+                    maxLength = null,
+                    validator = username_validator
+                )
+                ValidatedTextField(
+                    value = server_signature,
+                    onValueChange = { server_signature = it },
+                    label = "Server signature (optional)",
+                    maxLength = null,
+                    validator = { value ->
+                        null // optional
+                    }
+                )
+            }
+        }
     }
 }

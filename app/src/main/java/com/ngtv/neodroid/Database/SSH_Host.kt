@@ -31,8 +31,14 @@ interface SSHHostDao {
     @Query("SELECT * FROM ssh_hosts ORDER BY id DESC")
     fun getAll(): Flow<List<SSHHostEntity>>
 
+    @Query("SELECT * FROM ssh_hosts WHERE id = :id LIMIT 1")
+    fun getById(id: Int): Flow<SSHHostEntity?>
+
     @Insert
     suspend fun insert(host: SSHHostEntity)
+
+    @Update
+    suspend fun update(host: SSHHostEntity)
 
     @Delete
     suspend fun delete(host: SSHHostEntity)
@@ -44,6 +50,9 @@ class SSHHostRepository(
 ) {
     fun getAllHosts(): Flow<List<SSHHostEntity>> =
         dao.getAll()
+
+    fun getById(id: Int): Flow<SSHHostEntity?> =
+        dao.getById(id)
 
     suspend fun addHost(
         name: String,
@@ -62,6 +71,10 @@ class SSHHostRepository(
     suspend fun deleteHost(host: SSHHostEntity) {
         dao.delete(host)
     }
+
+    suspend fun updateHost(host: SSHHostEntity) {
+        dao.update(host)
+    }
 }
 
 
@@ -75,6 +88,9 @@ class SSHHostViewModel(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
         )
+
+    fun getHostById(id: Int): Flow<SSHHostEntity?> =
+        repository.getById(id)
 
     data class InputModel(
         val name: String,
@@ -120,6 +136,17 @@ class SSHHostViewModel(
     fun deleteHost(host: SSHHostEntity) {
         viewModelScope.launch {
             repository.deleteHost(host)
+        }
+    }
+
+    fun updateHost(host: SSHHostEntity) {
+        require(host.name.isNotBlank()) { "Host name cannot be blank" }
+        require(host.host_name.isNotBlank()) { "Host name cannot be blank" }
+        require(host.port in 1..65535) { "Port must be between 1 and 65535" }
+        require(host.username.isNotBlank()) { "Username cannot be blank" }
+
+        viewModelScope.launch {
+            repository.updateHost(host)
         }
     }
 }
