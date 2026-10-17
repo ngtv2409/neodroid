@@ -1,3 +1,4 @@
+@file:Suppress("FunctionName")
 package com.ngtv.neodroid.core
 
 import java.io.InputStream
@@ -30,8 +31,8 @@ class NvimException(
 ) : RuntimeException(message, cause)
 
 class NvimAPIException(
-    val method: String,
-    val errorType: Long,
+    method: String,
+    errorType: Long,
     message: String,
     cause: Throwable? = null
 ) : RuntimeException(
@@ -50,10 +51,10 @@ sealed interface NvimNotification {
 }
 
 class NeovimClient(
-    private val input: InputStream,
+    input: InputStream,
     // TODO: output may be unsafe for concurrent writes. Mutex?
-    private val output: OutputStream,
-    private val parentScope: CoroutineScope
+    output: OutputStream,
+    parentScope: CoroutineScope
 ) : Closeable {
 
     private val closed = AtomicBoolean(false)
@@ -73,7 +74,7 @@ class NeovimClient(
     val scope = CoroutineScope(parentScope.coroutineContext + clientJob)
 
     private val packer = MessagePack.newDefaultPacker(NonClosingOutputStream(output))
-    private var MessageId = AtomicInteger(0)
+    private var messageId = AtomicInteger(0)
     private val pending =
         ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
     private val _notifications = MutableSharedFlow<NvimNotification>()
@@ -130,19 +131,19 @@ class NeovimClient(
 
 
     // send a request
-    fun send_request(method_name: String, params: List<Any?>)
+    fun sendRequest(method: String, params: List<Any?>)
         : CompletableDeferred<RpcResponse> {
-        val id = MessageId.getAndIncrement().toUInt()
+        val id = messageId.getAndIncrement().toUInt()
         val deferred = CompletableDeferred<RpcResponse>()
         pending[id] = deferred
-        packer.packRpcMessage(RpcRequest(id, method_name, params))
+        packer.packRpcMessage(RpcRequest(id, method, params))
         packer.flush()
         return deferred
     }
 
     // A not so useful function that returns a raw response
     suspend fun call(method: String, params: List<Any?>): RpcResponse {
-        return send_request(method, params).await()
+        return sendRequest(method, params).await()
     }
 
     suspend fun ui_attach(width: Int, height: Int, options: Map<String, Any?>) {
@@ -150,7 +151,7 @@ class NeovimClient(
         if (response.error != null) {
             throw NvimAPIException("ui_attach",
                 (response.error as? List<Any?>)?.get(0) as Long,
-                (response.error as? List<Any?>)?.get(1) as String)
+                response.error[1] as String)
         }
     }
 }

@@ -1,10 +1,16 @@
-package com.ngtv.neodroid
+package com.ngtv.neodroid.database
 
-import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Update
 
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -16,10 +22,10 @@ data class SSHHostEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
 
-    val name: String,
-    val host_name: String,
+    val serverName: String,
+    val hostname: String,
     val port: Int,
-    val server_signature: String?,
+    val serverSignature: String?,
     val username: String,
     /* ... TODO: add necessary fields */
 )
@@ -55,15 +61,15 @@ class SSHHostRepository(
         dao.getById(id)
 
     suspend fun addHost(
-        name: String,
-        host_name: String,
+        serverName: String,
+        hostname: String,
         port: Int,
-        server_signature: String?,
+        serverSignature: String?,
         username: String,
     ) {
         dao.insert(SSHHostEntity(
-            name = name, host_name = host_name, 
-            port = port, server_signature = server_signature,
+            serverName = serverName, hostname = hostname, 
+            port = port, serverSignature = serverSignature,
             username = username
         ))
     }
@@ -93,31 +99,31 @@ class SSHHostViewModel(
         repository.getById(id)
 
     data class InputModel(
-        val name: String,
-        val host_name: String,
+        val serverName: String,
+        val hostname: String,
         val port: Int,
-        val server_signature: String?,
+        val serverSignature: String?,
         val username: String
     )
 
     fun addHost(
-        name: String,
-        host_name: String,
+        serverName: String,
+        hostname: String,
         port: Int,
-        server_signature: String?,
+        serverSignature: String?,
         username: String
     ) {
-        require(name.isNotBlank()) { "Host name cannot be blank" }
-        require(host_name.isNotBlank()) { "Host name cannot be blank" }
+        require(serverName.isNotBlank()) { "Host name cannot be blank" }
+        require(hostname.isNotBlank()) { "Host name cannot be blank" }
         require(port in 1..65535) { "Port must be between 1 and 65535" }
         require(username.isNotBlank()) { "Username cannot be blank" }
 
         viewModelScope.launch {
             repository.addHost(
-                name = name,
-                host_name = host_name,
+                serverName = serverName,
+                hostname = hostname,
                 port = port,
-                server_signature = server_signature,
+                serverSignature = serverSignature,
                 username = username
             )
         }
@@ -125,10 +131,10 @@ class SSHHostViewModel(
 
     fun addHost(input: InputModel) {
         addHost(
-            name = input.name,
-            host_name = input.host_name,
+            serverName = input.serverName,
+            hostname = input.hostname,
             port = input.port,
-            server_signature = input.server_signature,
+            serverSignature = input.serverSignature,
             username = input.username
         )
     }
@@ -140,8 +146,8 @@ class SSHHostViewModel(
     }
 
     fun updateHost(host: SSHHostEntity) {
-        require(host.name.isNotBlank()) { "Host name cannot be blank" }
-        require(host.host_name.isNotBlank()) { "Host name cannot be blank" }
+        require(host.serverName.isNotBlank()) { "Host name cannot be blank" }
+        require(host.hostname.isNotBlank()) { "Host name cannot be blank" }
         require(host.port in 1..65535) { "Port must be between 1 and 65535" }
         require(host.username.isNotBlank()) { "Username cannot be blank" }
 

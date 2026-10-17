@@ -243,7 +243,7 @@ fun MessageUnpacker.unpackRpcMessage(): RpcMessage {
 }
 
 private fun decodeRpcFields(message: ArrayList<Any?>): RpcMessage {
-    require(message.size >= 1)
+    require(message.isNotEmpty())
     require(message[0] is Long)
     val type = (message[0] as? Long)
         ?.takeIf { it in 0L..2L }

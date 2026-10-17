@@ -1,4 +1,5 @@
-package com.ngtv.neodroid.core
+@file:Suppress("PropertyName")
+package com.ngtv.neodroid.core.events
 
 // https://neovim.io/doc/user/api-ui-events/#_global-events
 // only implement the significant subsets
@@ -13,15 +14,15 @@ sealed interface NvimUiEvent {
     data class OptionSet(val name: String, val value: Any?): NvimUiEvent
     data class Chdir(val path: String): NvimUiEvent
     data class ModeChange(val mode: String, val mode_idx: Long): NvimUiEvent
-    class BusyStart(): NvimUiEvent {
+    data object BusyStart: NvimUiEvent {
         override fun toString() = "BusyStart()"
     }
-    class BusyStop(): NvimUiEvent {
+    data object BusyStop: NvimUiEvent {
         override fun toString() = "BusyStop()"
     }
     // TODO: more thought
     // ignore Connect and Restart since we'd be listening on stdio over ssh
-    class Flush(): NvimUiEvent {
+    data object Flush: NvimUiEvent {
         override fun toString() = "Flush()"
     }
 
@@ -87,7 +88,7 @@ data class TextCell (
 internal fun dispatchRedrawEvent(
     events: List<List<Any?>>
 ): List<NvimUiEvent> {
-    val list_to_append = mutableListOf<NvimUiEvent>()
+    val result = mutableListOf<NvimUiEvent>()
 
     fun highlightAttr(
         attrs: Map<*, *>
@@ -125,13 +126,13 @@ internal fun dispatchRedrawEvent(
 
             when (method) {
                 "set_title" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.SetTitle(args[0] as String)
                     )
                 }
 
                 "set_icon" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.SetIcon(args[0] as String)
                     )
                 }
@@ -162,13 +163,13 @@ internal fun dispatchRedrawEvent(
                         )
                     }
 
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.ModeInfoSet(enabled, modes)
                     )
                 }
 
                 "option_set" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.OptionSet(
                             args[0] as String,
                             args[1]
@@ -177,28 +178,28 @@ internal fun dispatchRedrawEvent(
                 }
 
                 "chdir" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.Chdir(args[0] as String)
                     )
                 }
 
                 "mode_change" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.ModeChange(args[0] as String, args[1] as Long)
                     )
                 }
 
                 "busy_start" ->
-                    list_to_append.add(NvimUiEvent.BusyStart())
+                    result.add(NvimUiEvent.BusyStart)
 
                 "busy_stop" ->
-                    list_to_append.add(NvimUiEvent.BusyStop())
+                    result.add(NvimUiEvent.BusyStop)
 
                 "flush" ->
-                    list_to_append.add(NvimUiEvent.Flush())
+                    result.add(NvimUiEvent.Flush)
 
                 "grid_resize" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.GridResize(
                             args[0] as Long,
                             args[1] as Long,
@@ -208,7 +209,7 @@ internal fun dispatchRedrawEvent(
                 }
 
                 "default_colors_set" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.DefaultColorSet(
                             args[0] as Long,
                             args[1] as Long,
@@ -224,7 +225,7 @@ internal fun dispatchRedrawEvent(
                     val rgbAttrs = args[1] as Map<*, *>
                     val ctermAttrs = args[2] as Map<*, *>
 
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.HlAttrDefine(
                             id = id,
                             rgb_attr = highlightAttr(rgbAttrs),
@@ -235,7 +236,7 @@ internal fun dispatchRedrawEvent(
                 }
 
                 "hl_group_set" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.HlGroupSet(
                             args[0] as String,
                             args[1] as Long
@@ -254,7 +255,7 @@ internal fun dispatchRedrawEvent(
                         )
                     }
 
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.GridLine(
                             grid = args[0] as Long,
                             row = args[1] as Long,
@@ -266,19 +267,19 @@ internal fun dispatchRedrawEvent(
                 }
 
                 "grid_clear" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.GridClear(args[0] as Long)
                     )
                 }
 
                 "grid_destroy" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.GridDestroy(args[0] as Long)
                     )
                 }
 
                 "grid_cursor_goto" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.GridCursorGoto(
                             args[0] as Long,
                             args[1] as Long,
@@ -288,7 +289,7 @@ internal fun dispatchRedrawEvent(
                 }
 
                 "grid_scroll" -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.GridScroll(
                             args[0] as Long,
                             args[1] as Long,
@@ -302,7 +303,7 @@ internal fun dispatchRedrawEvent(
                 }
 
                 else -> {
-                    list_to_append.add(
+                    result.add(
                         NvimUiEvent.Unclassified(method, args)
                     )
                 }
@@ -310,5 +311,5 @@ internal fun dispatchRedrawEvent(
         }
     }
 
-    return list_to_append
+    return result
 }

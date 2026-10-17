@@ -1,6 +1,5 @@
-package com.ngtv.neodroid
+package com.ngtv.neodroid.database
 
-import androidx.room.*
 import android.content.Context
 import kotlinx.coroutines.flow.Flow
 import androidx.lifecycle.ViewModel
@@ -11,6 +10,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import androidx.lifecycle.ViewModelProvider
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
 
 @Database(
     entities = [SSHHostEntity::class],
