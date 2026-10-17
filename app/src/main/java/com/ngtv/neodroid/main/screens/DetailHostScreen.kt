@@ -29,7 +29,9 @@ import com.ngtv.neodroid.sharedComponents.ValidatedTextField
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
-    val hostHandler by viewModel.getHostById(hostId).collectAsStateWithLifecycle(initialValue = null)
+    val hostHandler by viewModel.getHostById(
+        hostId,
+    ).collectAsStateWithLifecycle(initialValue = null)
     val host = hostHandler ?: return
 
     var serverName by remember { mutableStateOf(host.serverName) }
@@ -67,14 +69,14 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
     }
 
     val canSubmit = serverNameValidator(serverName) == null &&
-                    hostnameValidator(hostname) == null &&
-                    portValidator(portStr) == null &&
-                    usernameValidator(username) == null
+        hostnameValidator(hostname) == null &&
+        portValidator(portStr) == null &&
+        usernameValidator(username) == null
     val isChanged = serverName != host.serverName ||
-                    hostname != host.hostname ||
-                    portStr != host.port.toString() ||
-                    username != host.username ||
-                    serverSignature != (host.serverSignature ?: "")
+        hostname != host.hostname ||
+        portStr != host.port.toString() ||
+        username != host.username ||
+        serverSignature != (host.serverSignature ?: "")
 
     Scaffold(
         topBar = {
@@ -85,13 +87,13 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
                 ),
                 title = {
                     host.serverName
-                }
+                },
             )
         },
         bottomBar = {
             Row(
                 modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(
                     modifier = Modifier.weight(1f),
@@ -109,37 +111,37 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
                                 serverName = serverName.trim(),
                                 hostname = hostname.trim(),
                                 port = portStr.trim().toInt(),
-                                serverSignature = serverSignature.trim().ifBlank {null},
-                                username = username.trim()
-                            )
+                                serverSignature = serverSignature.trim().ifBlank { null },
+                                username = username.trim(),
+                            ),
                         )
                     },
                 ) {
                     Text("Save")
                 }
             }
-        }
+        },
     ) { innerPadding ->
         Box(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp)
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp),
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 ValidatedTextField(
                     value = serverName,
                     onValueChange = { serverName = it },
                     label = "Server name*",
                     maxLength = 100,
-                    validator = serverNameValidator
+                    validator = serverNameValidator,
                 )
                 ValidatedTextField(
                     value = hostname,
                     onValueChange = { hostname = it },
                     label = "Host name*",
                     maxLength = null,
-                    validator = hostnameValidator
+                    validator = hostnameValidator,
                 )
                 ValidatedTextField(
                     value = portStr,
@@ -148,14 +150,14 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
                     },
                     label = "Port*",
                     maxLength = null,
-                    validator =  portValidator
+                    validator = portValidator,
                 )
                 ValidatedTextField(
                     value = username,
                     onValueChange = { username = it },
                     label = "Username",
                     maxLength = null,
-                    validator = usernameValidator
+                    validator = usernameValidator,
                 )
                 ValidatedTextField(
                     value = serverSignature,
@@ -164,7 +166,7 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
                     maxLength = null,
                     validator = { value ->
                         null // optional
-                    }
+                    },
                 )
             }
         }

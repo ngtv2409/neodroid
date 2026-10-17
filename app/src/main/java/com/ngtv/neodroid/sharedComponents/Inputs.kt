@@ -1,10 +1,10 @@
 package com.ngtv.neodroid.sharedComponents
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.Composable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -56,7 +56,7 @@ fun ValidatedTextField(
                 showError -> {
                     Text(
                         text = error,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
 
@@ -64,6 +64,6 @@ fun ValidatedTextField(
                     Text("${value.length}/$maxLength characters")
                 }
             }
-        }
+        },
     )
 }

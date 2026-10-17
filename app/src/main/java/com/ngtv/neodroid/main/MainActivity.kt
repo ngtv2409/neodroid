@@ -1,10 +1,8 @@
 package com.ngtv.neodroid.main
 
 import android.os.Bundle
-
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-
 import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import com.ngtv.neodroid.database.AppDatabase
@@ -21,8 +19,8 @@ class MainActivity : ComponentActivity() {
         AppDatabase.getInstance(applicationContext)
     }
 
-        private val repository by lazy {
-            SSHHostRepository(database.SSHHostDao())
+    private val repository by lazy {
+        SSHHostRepository(database.SSHHostDao())
     }
 
     private val viewModelFactory by lazy {

@@ -64,9 +64,9 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
     }
 
     val canSubmit = serverNameValidator(serverName) == null &&
-                    hostnameValidator(hostname) == null &&
-                    portValidator(portStr) == null &&
-                    usernameValidator(username) == null
+        hostnameValidator(hostname) == null &&
+        portValidator(portStr) == null &&
+        usernameValidator(username) == null
 
     Scaffold(
         topBar = {
@@ -77,25 +77,26 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
                 ),
                 title = {
                     Text("Add SSH Host")
-                }
+                },
             )
         },
         bottomBar = {
             Row(
                 modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(
                     enabled = canSubmit,
                     onClick = {
                         onSubmit(
                             SSHHostViewModel.InputModel(
-                            serverName = serverName.trim(),
-                            hostname = hostname.trim(),
-                            port = portStr.trim().toInt(),
-                            serverSignature = serverSignature.trim().ifBlank {null},
-                            username = username.trim()
-                        ))
+                                serverName = serverName.trim(),
+                                hostname = hostname.trim(),
+                                port = portStr.trim().toInt(),
+                                serverSignature = serverSignature.trim().ifBlank { null },
+                                username = username.trim(),
+                            ),
+                        )
                         back()
                     },
                     modifier = Modifier.weight(1f),
@@ -103,28 +104,28 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
                     Text("Submit")
                 }
             }
-        }
+        },
     ) { innerPadding ->
         Box(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp)
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp),
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 ValidatedTextField(
                     value = serverName,
                     onValueChange = { serverName = it },
                     label = "Server name*",
                     maxLength = 100,
-                    validator = serverNameValidator
+                    validator = serverNameValidator,
                 )
                 ValidatedTextField(
                     value = hostname,
                     onValueChange = { hostname = it },
                     label = "Host name*",
                     maxLength = null,
-                    validator = hostnameValidator
+                    validator = hostnameValidator,
                 )
                 ValidatedTextField(
                     value = portStr,
@@ -133,14 +134,14 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
                     },
                     label = "Port*",
                     maxLength = null,
-                    validator =  portValidator
+                    validator = portValidator,
                 )
                 ValidatedTextField(
                     value = username,
                     onValueChange = { username = it },
                     label = "Username",
                     maxLength = null,
-                    validator = usernameValidator
+                    validator = usernameValidator,
                 )
                 ValidatedTextField(
                     value = serverSignature,
@@ -149,7 +150,7 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
                     maxLength = null,
                     validator = { value ->
                         null // optional
-                    }
+                    },
                 )
             }
         }

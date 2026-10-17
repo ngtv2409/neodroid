@@ -30,7 +30,7 @@ import com.ngtv.neodroid.sharedComponents.ListItemCard
 fun HomeScreen(
     viewModel: SSHHostViewModel,
     onOpenHostAdd: () -> Unit,
-    onOpenDetail: (Int) -> Unit
+    onOpenDetail: (Int) -> Unit,
 ) {
     val hosts by viewModel.hosts.collectAsStateWithLifecycle()
     Scaffold(
@@ -42,39 +42,41 @@ fun HomeScreen(
                 ),
                 title = {
                     Text("Neodroid")
-                }
+                },
             )
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { onOpenHostAdd() }
+                onClick = { onOpenHostAdd() },
             ) {
                 Text("+")
             }
-        }
+        },
     ) { innerPadding ->
         Box(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp)
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(2.dp),
         ) {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(16.dp),
             ) {
                 Text("Hosts", style = MaterialTheme.typography.titleMedium)
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(
                         items = hosts,
-                        key = { host -> host.id }
+                        key = { host -> host.id },
                     ) { host ->
                         ListItemCard(
                             headlineContent = { Text(host.serverName) },
-                            supportingContent = { Text("${host.username}@${host.hostname} • ${host.port}") },
+                            supportingContent = {
+                                Text("${host.username}@${host.hostname} • ${host.port}")
+                            },
                             onClick = {
                                 onOpenDetail(host.id)
-                            }
+                            },
                         )
                     }
                 }
@@ -82,4 +84,3 @@ fun HomeScreen(
         }
     }
 }
-

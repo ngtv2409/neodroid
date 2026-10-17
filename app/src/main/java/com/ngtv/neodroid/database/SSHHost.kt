@@ -1,6 +1,5 @@
 package com.ngtv.neodroid.database
 
-import kotlinx.coroutines.flow.Flow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -11,9 +10,9 @@ import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Update
-
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -29,7 +28,6 @@ data class SSHHostEntity(
     val username: String,
     /* ... TODO: add necessary fields */
 )
-
 
 @Dao
 interface SSHHostDao {
@@ -50,15 +48,10 @@ interface SSHHostDao {
     suspend fun delete(host: SSHHostEntity)
 }
 
+class SSHHostRepository(private val dao: SSHHostDao) {
+    fun getAllHosts(): Flow<List<SSHHostEntity>> = dao.getAll()
 
-class SSHHostRepository(
-    private val dao: SSHHostDao
-) {
-    fun getAllHosts(): Flow<List<SSHHostEntity>> =
-        dao.getAll()
-
-    fun getById(id: Int): Flow<SSHHostEntity?> =
-        dao.getById(id)
+    fun getById(id: Int): Flow<SSHHostEntity?> = dao.getById(id)
 
     suspend fun addHost(
         serverName: String,
@@ -67,11 +60,15 @@ class SSHHostRepository(
         serverSignature: String?,
         username: String,
     ) {
-        dao.insert(SSHHostEntity(
-            serverName = serverName, hostname = hostname, 
-            port = port, serverSignature = serverSignature,
-            username = username
-        ))
+        dao.insert(
+            SSHHostEntity(
+                serverName = serverName,
+                hostname = hostname,
+                port = port,
+                serverSignature = serverSignature,
+                username = username,
+            ),
+        )
     }
 
     suspend fun deleteHost(host: SSHHostEntity) {
@@ -83,27 +80,23 @@ class SSHHostRepository(
     }
 }
 
-
-class SSHHostViewModel(
-    private val repository: SSHHostRepository
-) : ViewModel() {
+class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() {
 
     val hosts: StateFlow<List<SSHHostEntity>> =
         repository.getAllHosts().stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = emptyList()
+            initialValue = emptyList(),
         )
 
-    fun getHostById(id: Int): Flow<SSHHostEntity?> =
-        repository.getById(id)
+    fun getHostById(id: Int): Flow<SSHHostEntity?> = repository.getById(id)
 
     data class InputModel(
         val serverName: String,
         val hostname: String,
         val port: Int,
         val serverSignature: String?,
-        val username: String
+        val username: String,
     )
 
     fun addHost(
@@ -111,7 +104,7 @@ class SSHHostViewModel(
         hostname: String,
         port: Int,
         serverSignature: String?,
-        username: String
+        username: String,
     ) {
         require(serverName.isNotBlank()) { "Host name cannot be blank" }
         require(hostname.isNotBlank()) { "Host name cannot be blank" }
@@ -124,7 +117,7 @@ class SSHHostViewModel(
                 hostname = hostname,
                 port = port,
                 serverSignature = serverSignature,
-                username = username
+                username = username,
             )
         }
     }
@@ -135,7 +128,7 @@ class SSHHostViewModel(
             hostname = input.hostname,
             port = input.port,
             serverSignature = input.serverSignature,
-            username = input.username
+            username = input.username,
         )
     }
 
@@ -157,20 +150,17 @@ class SSHHostViewModel(
     }
 }
 
-class SSHHostViewModelFactory(
-    private val repository: SSHHostRepository
-) : ViewModelProvider.Factory {
+class SSHHostViewModelFactory(private val repository: SSHHostRepository) :
+    ViewModelProvider.Factory {
 
-    override fun <T : ViewModel> create(
-        modelClass: Class<T>
-    ): T {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(SSHHostViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
             return SSHHostViewModel(repository) as T
         }
 
         throw IllegalArgumentException(
-            "Unknown ViewModel class: ${modelClass.name}"
+            "Unknown ViewModel class: ${modelClass.name}",
         )
     }
 }

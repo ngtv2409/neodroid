@@ -1,49 +1,41 @@
 @file:Suppress("FunctionName")
+
 package com.ngtv.neodroid.core
 
-import java.io.InputStream
-import java.io.OutputStream
-import java.io.Closeable
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.ArrayList
-
+import com.ngtv.neodroid.core.events.NvimUiEvent
+import com.ngtv.neodroid.core.events.dispatchRedrawEvent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.msgpack.core.MessagePack
 import org.msgpack.core.MessagePacker
+import java.io.Closeable
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.ArrayList
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
-class NvimException(
-    message: String,
-    cause: Throwable? = null
-) : RuntimeException(message, cause)
+class NvimException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
-class NvimAPIException(
-    method: String,
-    errorType: Long,
-    message: String,
-    cause: Throwable? = null
-) : RuntimeException(
-    "[$method] E$errorType: $message",
-    cause
-)
+class NvimAPIException(method: String, errorType: Long, message: String, cause: Throwable? = null) :
+    RuntimeException(
+        "[$method] E$errorType: $message",
+        cause,
+    )
 
-class NvimConnectionException(
-    message: String,
-    cause: Throwable? = null
-) : RuntimeException(message, cause)
+class NvimConnectionException(message: String, cause: Throwable? = null) :
+    RuntimeException(message, cause)
 
 sealed interface NvimNotification {
     data class Redraw(val events: List<NvimUiEvent>) : NvimNotification
@@ -54,7 +46,7 @@ class NeovimClient(
     input: InputStream,
     // TODO: output may be unsafe for concurrent writes. Mutex?
     output: OutputStream,
-    parentScope: CoroutineScope
+    parentScope: CoroutineScope,
 ) : Closeable {
 
     private val closed = AtomicBoolean(false)
@@ -79,6 +71,7 @@ class NeovimClient(
         ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
     private val _notifications = MutableSharedFlow<NvimNotification>()
     val notifications: Flow<NvimNotification> = _notifications.asSharedFlow()
+
     // reader to complete promises
     private val readerJob = scope.launch(Dispatchers.IO) {
         MessagePack.newDefaultUnpacker(NonClosingInputStream(input)).use { unpacker ->
@@ -95,6 +88,7 @@ class NeovimClient(
                     is RpcResponse -> {
                         pending.remove(message.msgid)?.complete(message)
                     }
+
                     is RpcNotification -> {
                         val notif = when (message.method) {
                             "redraw" -> {
@@ -102,6 +96,7 @@ class NeovimClient(
                                     NvimNotification.Redraw(dispatchRedrawEvent(params))
                                 }
                             }
+
                             else -> {
                                 NvimNotification.Unclassified(message)
                             }
@@ -110,6 +105,7 @@ class NeovimClient(
                             _notifications.emit(notif)
                         }
                     }
+
                     is RpcRequest -> {
                         // handle request
                         error("not implemented")
@@ -129,10 +125,8 @@ class NeovimClient(
         runCatching { packer.close() }
     }
 
-
     // send a request
-    fun sendRequest(method: String, params: List<Any?>)
-        : CompletableDeferred<RpcResponse> {
+    fun sendRequest(method: String, params: List<Any?>): CompletableDeferred<RpcResponse> {
         val id = messageId.getAndIncrement().toUInt()
         val deferred = CompletableDeferred<RpcResponse>()
         pending[id] = deferred
@@ -142,16 +136,17 @@ class NeovimClient(
     }
 
     // A not so useful function that returns a raw response
-    suspend fun call(method: String, params: List<Any?>): RpcResponse {
-        return sendRequest(method, params).await()
-    }
+    suspend fun call(method: String, params: List<Any?>): RpcResponse =
+        sendRequest(method, params).await()
 
     suspend fun ui_attach(width: Int, height: Int, options: Map<String, Any?>) {
         val response = call("nvim_ui_attach", listOf(width, height, options))
         if (response.error != null) {
-            throw NvimAPIException("ui_attach",
+            throw NvimAPIException(
+                "ui_attach",
                 (response.error as? List<Any?>)?.get(0) as Long,
-                response.error[1] as String)
+                response.error[1] as String,
+            )
         }
     }
 }

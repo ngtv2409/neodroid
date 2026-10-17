@@ -9,8 +9,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.main.screens.AddHostScreen
-import com.ngtv.neodroid.main.screens.HomeScreen
 import com.ngtv.neodroid.main.screens.DetailHostScreen
+import com.ngtv.neodroid.main.screens.HomeScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -22,13 +22,16 @@ fun MainNavigation(viewModel: SSHHostViewModel) {
         startDestination = "home",
     ) {
         composable("home") {
-            HomeScreen(viewModel,
+            HomeScreen(
+                viewModel,
                 onOpenHostAdd = { navController.navigate("hosts/new") },
-                onOpenDetail = { id -> navController.navigate("hosts/details/$id") }
+                onOpenDetail = { id -> navController.navigate("hosts/details/$id") },
             )
         }
         composable("hosts/new") {
-            AddHostScreen(onSubmit = {host: SSHHostViewModel.InputModel -> viewModel.addHost(host)}, back = {
+            AddHostScreen(onSubmit = { host: SSHHostViewModel.InputModel ->
+                viewModel.addHost(host)
+            }, back = {
                 navController.popBackStack()
             })
         }

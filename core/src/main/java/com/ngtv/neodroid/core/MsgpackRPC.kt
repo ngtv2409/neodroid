@@ -20,34 +20,30 @@ import java.util.ArrayList
 
 sealed interface RpcMessage
 
-data class RpcRequest(
-    val msgid: UInt,
-    val method: String,
-    val params: List<Any?>
-) : RpcMessage
+data class RpcRequest(val msgid: UInt, val method: String, val params: List<Any?>) : RpcMessage
 
-data class RpcResponse(
-    val msgid: UInt,
-    val error: Any?,
-    val result: Any?
-) : RpcMessage
+data class RpcResponse(val msgid: UInt, val error: Any?, val result: Any?) : RpcMessage
 
-data class RpcNotification(
-    val method: String,
-    val params: List<Any?>
-) : RpcMessage
-
+data class RpcNotification(val method: String, val params: List<Any?>) : RpcMessage
 
 private fun MessagePacker.packAny(value: Any?) {
     when (value) {
         null -> packNil()
+
         is Boolean -> packBoolean(value)
+
         is Byte -> packByte(value)
+
         is Short -> packShort(value)
+
         is Int -> packInt(value)
+
         is Long -> packLong(value)
+
         is Float -> packFloat(value)
+
         is Double -> packDouble(value)
+
         is String -> packString(value)
 
         is ByteArray -> {
@@ -74,98 +70,100 @@ private fun MessagePacker.packAny(value: Any?) {
     }
 }
 
+private fun MessageUnpacker.unpackAny(): Any? = when (getNextFormat()) {
+    MessageFormat.NIL -> {
+        unpackNil()
+        null
+    }
 
-private fun MessageUnpacker.unpackAny(): Any? {
-    return when (getNextFormat()) {
-        MessageFormat.NIL -> {
-            unpackNil()
-            null
+    MessageFormat.BOOLEAN -> unpackBoolean()
+
+    MessageFormat.POSFIXINT,
+    MessageFormat.NEGFIXINT,
+    MessageFormat.UINT8,
+    MessageFormat.UINT16,
+    MessageFormat.UINT32,
+    MessageFormat.UINT64,
+    MessageFormat.INT8,
+    MessageFormat.INT16,
+    MessageFormat.INT32,
+    MessageFormat.INT64,
+    -> unpackLong()
+
+    MessageFormat.FLOAT32,
+    MessageFormat.FLOAT64,
+    -> unpackDouble()
+
+    MessageFormat.FIXSTR,
+    MessageFormat.STR8,
+    MessageFormat.STR16,
+    MessageFormat.STR32,
+    -> unpackString()
+
+    MessageFormat.BIN8,
+    MessageFormat.BIN16,
+    MessageFormat.BIN32,
+    -> {
+        val size = unpackBinaryHeader()
+        ByteArray(size).also {
+            readPayload(it)
         }
+    }
 
-        MessageFormat.BOOLEAN -> unpackBoolean()
+    MessageFormat.FIXARRAY,
+    MessageFormat.ARRAY16,
+    MessageFormat.ARRAY32,
+    -> {
+        val size = unpackArrayHeader()
+        List(size) {
+            unpackAny()
+        }
+    }
 
-        MessageFormat.POSFIXINT,
-        MessageFormat.NEGFIXINT,
-        MessageFormat.UINT8,
-        MessageFormat.UINT16,
-        MessageFormat.UINT32,
-        MessageFormat.UINT64,
-        MessageFormat.INT8,
-        MessageFormat.INT16,
-        MessageFormat.INT32,
-        MessageFormat.INT64 -> unpackLong()
-
-        MessageFormat.FLOAT32,
-        MessageFormat.FLOAT64 -> unpackDouble()
-
-        MessageFormat.FIXSTR,
-        MessageFormat.STR8,
-        MessageFormat.STR16,
-        MessageFormat.STR32 -> unpackString()
-
-        MessageFormat.BIN8,
-        MessageFormat.BIN16,
-        MessageFormat.BIN32 -> {
-            val size = unpackBinaryHeader()
-            ByteArray(size).also {
-                readPayload(it)
+    MessageFormat.FIXMAP,
+    MessageFormat.MAP16,
+    MessageFormat.MAP32,
+    -> {
+        val size = unpackMapHeader()
+        buildMap {
+            repeat(size) {
+                val key = unpackAny()
+                val value = unpackAny()
+                put(key, value)
             }
         }
+    }
 
-        MessageFormat.FIXARRAY,
-        MessageFormat.ARRAY16,
-        MessageFormat.ARRAY32 -> {
-            val size = unpackArrayHeader()
-            List(size) {
-                unpackAny()
-            }
-        }
+    MessageFormat.EXT8,
+    MessageFormat.EXT16,
+    MessageFormat.EXT32,
+    MessageFormat.FIXEXT1,
+    MessageFormat.FIXEXT2,
+    MessageFormat.FIXEXT4,
+    MessageFormat.FIXEXT8,
+    MessageFormat.FIXEXT16,
+    -> {
+        val header = unpackExtensionTypeHeader()
+        val type = header.type
+        val size = header.length
 
-        MessageFormat.FIXMAP,
-        MessageFormat.MAP16,
-        MessageFormat.MAP32 -> {
-            val size = unpackMapHeader()
-            buildMap {
-                repeat(size) {
-                    val key = unpackAny()
-                    val value = unpackAny()
-                    put(key, value)
-                }
-            }
-        }
+        val data = ByteArray(size)
+        readPayload(data)
 
-        MessageFormat.EXT8,
-        MessageFormat.EXT16,
-        MessageFormat.EXT32,
-        MessageFormat.FIXEXT1,
-        MessageFormat.FIXEXT2,
-        MessageFormat.FIXEXT4,
-        MessageFormat.FIXEXT8,
-        MessageFormat.FIXEXT16 -> {
-            val header = unpackExtensionTypeHeader()
-            val type = header.type
-            val size = header.length
-
-            val data = ByteArray(size)
-            readPayload(data)
-
-            mapOf(
-                "__ext_type" to type,
-                "__ext_data" to data
-            )
-        }
-
-        else -> error(
-            "Unsupported MessagePack type: ${getNextFormat()}"
+        mapOf(
+            "__ext_type" to type,
+            "__ext_data" to data,
         )
     }
-}
 
+    else -> error(
+        "Unsupported MessagePack type: ${getNextFormat()}",
+    )
+}
 
 private const val REQUEST = 0
 private const val RESPONSE = 1
 private const val NOTIFICATION = 2
-
 
 fun MessagePacker.packRpcMessage(message: RpcMessage) {
     when (message) {
@@ -197,14 +195,9 @@ fun MessagePacker.packRpcMessage(message: RpcMessage) {
     }
 }
 
-class RpcIOException(
-    message: String,
-    cause: Throwable? = null
-) : RuntimeException(message, cause)
-class RpcFormatException(
-    message: String,
-    cause: Throwable? = null
-) : RuntimeException(message, cause)
+class RpcIOException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+class RpcFormatException(message: String, cause: Throwable? = null) :
+    RuntimeException(message, cause)
 
 fun MessageUnpacker.unpackRpcMessage(): RpcMessage {
     if (!hasNext()) {
@@ -254,42 +247,51 @@ private fun decodeRpcFields(message: ArrayList<Any?>): RpcMessage {
             if (message.size != 4) {
                 throw RpcFormatException("message type 'request' must has length 4")
             }
-            if(
+            if (
                 message[1] is Long && message[2] is String && message[3] is List<*>
             ) {
                 return RpcRequest(
                     (message[1] as Long).toUInt(),
-                    message[2] as String, message[3] as List<Any?>
+                    message[2] as String,
+                    message[3] as List<Any?>,
                 )
             } else {
-                throw RpcFormatException("message type 'request' must have the form [0, int32, String, Array<Any?>]. Got: $message")
+                throw RpcFormatException(
+                    "message type 'request' must have the form [0, int32, String, Array<Any?>]. Got: $message",
+                )
             }
         }
+
         1 -> {
             if (message.size != 4) {
                 throw RpcFormatException("message type 'response' must has length 4")
             }
-            if(
+            if (
                 message[1] is Long
             ) {
-                return RpcResponse((message[1] as Long).toUInt(), message[2], message[3]
-                )
+                return RpcResponse((message[1] as Long).toUInt(), message[2], message[3])
             } else {
-                throw RpcFormatException("message type 'response' must have the form [1, int32, Any?, Any?]. Got: $message")
+                throw RpcFormatException(
+                    "message type 'response' must have the form [1, int32, Any?, Any?]. Got: $message",
+                )
             }
         }
+
         2 -> {
             if (message.size != 3) {
                 throw RpcFormatException("message type 'notification' must has length 3")
             }
-            if(
+            if (
                 message[1] is String && message[2] is List<*>
             ) {
                 return RpcNotification(message[1] as String, message[2] as List<Any?>)
             } else {
-                throw RpcFormatException("message type 'notification' must have the form [2, String, Array<Any?>]. Got: $message")
+                throw RpcFormatException(
+                    "message type 'notification' must have the form [2, String, Array<Any?>]. Got: $message",
+                )
             }
         }
+
         else -> {
             error("unreachable")
         }
