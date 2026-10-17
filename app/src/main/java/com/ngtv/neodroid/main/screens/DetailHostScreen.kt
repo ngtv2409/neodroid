@@ -86,7 +86,7 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
                     titleContentColor = MaterialTheme.colorScheme.primary,
                 ),
                 title = {
-                    host.serverName
+                    Text(host.serverName)
                 },
             )
         },
