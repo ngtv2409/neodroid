@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.main
+package com.ngtv.neodroid
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
