@@ -21,10 +21,10 @@ data class SSHHostEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
 
-    val serverName: String,
+    val server_name: String,
     val hostname: String,
     val port: Int,
-    val serverSignature: String?,
+    val server_signature: String?,
     val username: String,
     /* ... TODO: add necessary fields */
 )
@@ -62,10 +62,10 @@ class SSHHostRepository(private val dao: SSHHostDao) {
     ) {
         dao.insert(
             SSHHostEntity(
-                serverName = serverName,
+                server_name = serverName,
                 hostname = hostname,
                 port = port,
-                serverSignature = serverSignature,
+                server_signature = serverSignature,
                 username = username,
             ),
         )
@@ -139,7 +139,7 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
     }
 
     fun updateHost(host: SSHHostEntity) {
-        require(host.serverName.isNotBlank()) { "Host name cannot be blank" }
+        require(host.server_name.isNotBlank()) { "Host name cannot be blank" }
         require(host.hostname.isNotBlank()) { "Host name cannot be blank" }
         require(host.port in 1..65535) { "Port must be between 1 and 65535" }
         require(host.username.isNotBlank()) { "Username cannot be blank" }

@@ -34,10 +34,10 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
     ).collectAsStateWithLifecycle(initialValue = null)
     val host = hostHandler ?: return
 
-    var serverName by remember { mutableStateOf(host.serverName) }
+    var serverName by remember { mutableStateOf(host.server_name) }
     var hostname by remember { mutableStateOf(host.hostname) }
     var portStr by remember { mutableStateOf(host.port.toString()) }
-    var serverSignature by remember { mutableStateOf(host.serverSignature ?: "") }
+    var serverSignature by remember { mutableStateOf(host.server_signature ?: "") }
     var username by remember { mutableStateOf(host.username) }
 
     val serverNameValidator = { value: String ->
@@ -72,11 +72,11 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
         hostnameValidator(hostname) == null &&
         portValidator(portStr) == null &&
         usernameValidator(username) == null
-    val isChanged = serverName != host.serverName ||
+    val isChanged = serverName != host.server_name ||
         hostname != host.hostname ||
         portStr != host.port.toString() ||
         username != host.username ||
-        serverSignature != (host.serverSignature ?: "")
+        serverSignature != (host.server_signature ?: "")
 
     Scaffold(
         topBar = {
@@ -86,7 +86,7 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
                     titleContentColor = MaterialTheme.colorScheme.primary,
                 ),
                 title = {
-                    Text(host.serverName)
+                    Text(host.server_name)
                 },
             )
         },
@@ -108,10 +108,10 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
                     onClick = {
                         viewModel.updateHost(
                             host.copy(
-                                serverName = serverName.trim(),
+                                server_name = serverName.trim(),
                                 hostname = hostname.trim(),
                                 port = portStr.trim().toInt(),
-                                serverSignature = serverSignature.trim().ifBlank { null },
+                                server_signature = serverSignature.trim().ifBlank { null },
                                 username = username.trim(),
                             ),
                         )

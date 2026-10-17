@@ -70,7 +70,7 @@ fun HomeScreen(
                         key = { host -> host.id },
                     ) { host ->
                         ListItemCard(
-                            headlineContent = { Text(host.serverName) },
+                            headlineContent = { Text(host.server_name) },
                             supportingContent = {
                                 Text("${host.username}@${host.hostname} • ${host.port}")
                             },
