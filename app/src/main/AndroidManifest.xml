@@ -3,6 +3,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <application
+        android:name=".NeodroidApplication"
         android:theme="@style/Theme.Main"
         android:label="Neodroid"
         android:allowBackup="false">
