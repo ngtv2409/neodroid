@@ -23,12 +23,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.sharedComponents.ValidatedTextField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
+fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int, onConnect: () -> Unit) {
     val hostHandler by viewModel.getHostById(
         hostId,
     ).collectAsStateWithLifecycle(initialValue = null)
@@ -97,7 +98,9 @@ fun DetailHostScreen(viewModel: SSHHostViewModel, hostId: Int) {
             ) {
                 Button(
                     modifier = Modifier.weight(1f),
+                    enabled = canSubmit && !isChanged,
                     onClick = {
+                        onConnect()
                     },
                 ) {
                     Text("Connect")

@@ -1,6 +1,7 @@
 package com.ngtv.neodroid.main.navigation
 
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -40,7 +41,18 @@ fun MainNavigation(viewModel: SSHHostViewModel) {
             if (hostId == null) {
                 navController.popBackStack()
             } else {
-                DetailHostScreen(viewModel, hostId)
+                DetailHostScreen(viewModel, hostId, onConnect = {
+                    navController.navigate("workspace/${hostId}")
+                })
+            }
+        }
+
+        composable("workspace/{hostId}") { backStackEntry ->
+            val hostId = backStackEntry.arguments?.getString("hostId")?.toInt()
+            if (hostId == null) {
+                navController.popBackStack()
+            } else {
+                WorkspaceNavigation(viewModel, hostId, back = { navController.popBackStack() })
             }
         }
     }
