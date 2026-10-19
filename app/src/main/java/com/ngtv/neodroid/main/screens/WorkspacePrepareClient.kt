@@ -35,7 +35,11 @@ import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 
 @Composable
-fun WorkspacePrepareClient(host: SSHHostEntity, sessionManager: SshSessionManager) {
+fun WorkspacePrepareClient(
+    host: SSHHostEntity,
+    sessionManager: SshSessionManager,
+    onConnect: () -> Unit,
+) {
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var connectEnable by remember { mutableStateOf(true) }
@@ -132,9 +136,11 @@ fun WorkspacePrepareClient(host: SSHHostEntity, sessionManager: SshSessionManage
                                 client.authPassword(host.username, password)
 
                                 // bind the connected client to the session manager
-                                // sessionManager.bind(client!!)
+                                sessionManager.bind(client)
                                 connectionTransferred = true
+                                // suceeded.
                             }
+                            onConnect()
                         } catch (e: TransportException) {
                             errorMessage = when (e.disconnectReason) {
                                 DisconnectReason.HOST_KEY_NOT_VERIFIABLE ->
