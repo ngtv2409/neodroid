@@ -32,6 +32,7 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.DisconnectReason
 import net.schmizz.sshj.transport.TransportException
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
+import net.schmizz.sshj.userauth.UserAuthException
 
 @Composable
 fun WorkspacePrepareClient(host: SSHHostEntity, sessionManager: SshSessionManager) {
@@ -128,6 +129,7 @@ fun WorkspacePrepareClient(host: SSHHostEntity, sessionManager: SshSessionManage
                                 }
 
                                 client.connect(host.hostname, host.port)
+                                client.authPassword(host.username, password)
 
                                 // bind the connected client to the session manager
                                 // sessionManager.bind(client!!)
@@ -143,6 +145,8 @@ fun WorkspacePrepareClient(host: SSHHostEntity, sessionManager: SshSessionManage
                             }
                         } catch (e: CancellationException) {
                             throw e
+                        } catch (e: UserAuthException) {
+                            errorMessage = "Authentication failed: ${e.message}"
                         } catch (e: Exception) {
                             errorMessage = "Connection failed: $e"
                         } finally {

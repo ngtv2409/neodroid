@@ -19,6 +19,10 @@ class SshSessionManager : java.io.Closeable {
         currentConnection = null
     }
 
+    fun getClient(): SSHClient? {
+        return currentConnection
+    }
+
     override fun close() {
         disconnect()
     }
