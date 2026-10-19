@@ -10,10 +10,13 @@ import com.ngtv.neodroid.database.SSHHostRepository
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.database.SSHHostViewModelFactory
 import com.ngtv.neodroid.main.navigation.MainNavigation
+import com.ngtv.neodroid.sshUtils.SshSessionManager
 
 /* Handle Main screen, add and manage SSH hosts */
 
 class MainActivity : ComponentActivity() {
+
+    private val sshSessionManager = SshSessionManager()
 
     private val database by lazy {
         AppDatabase.getInstance(applicationContext)
@@ -36,7 +39,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                MainNavigation(sshHostViewModel)
+                MainNavigation(sshHostViewModel, sshSessionManager)
             }
         }
     }

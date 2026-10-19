@@ -3,6 +3,9 @@ package com.ngtv.neodroid.main.navigation
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,10 +15,16 @@ import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.main.screens.AddHostScreen
 import com.ngtv.neodroid.main.screens.DetailHostScreen
 import com.ngtv.neodroid.main.screens.HomeScreen
+import com.ngtv.neodroid.main.screens.WorkspacePrepareClient
+import com.ngtv.neodroid.sshUtils.SshSessionManager
+import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.common.DisconnectReason
+import net.schmizz.sshj.transport.TransportException
+import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainNavigation(viewModel: SSHHostViewModel) {
+fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManager) {
     val navController = rememberNavController()
 
     NavHost(
@@ -42,7 +51,7 @@ fun MainNavigation(viewModel: SSHHostViewModel) {
                 navController.popBackStack()
             } else {
                 DetailHostScreen(viewModel, hostId, onConnect = {
-                    navController.navigate("workspace/${hostId}")
+                    navController.navigate("workspace/$hostId")
                 })
             }
         }
@@ -52,7 +61,11 @@ fun MainNavigation(viewModel: SSHHostViewModel) {
             if (hostId == null) {
                 navController.popBackStack()
             } else {
-                WorkspaceNavigation(viewModel, hostId, back = { navController.popBackStack() })
+                val hostHandler by viewModel.getHostById(
+                    hostId,
+                ).collectAsStateWithLifecycle(initialValue = null)
+                val host = hostHandler ?: return@composable
+                WorkspacePrepareClient(host, sessionManager)
             }
         }
     }

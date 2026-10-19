@@ -16,10 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun ValidatedTextField(
@@ -79,7 +78,7 @@ fun ValidatedTextField(
 fun PasswordInput(
     password: String,
     onPasswordChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     var passwordVisible by remember {
         mutableStateOf(false)
@@ -98,16 +97,16 @@ fun PasswordInput(
         },
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Password,
-            autoCorrectEnabled = false
+            autoCorrectEnabled = false,
         ),
         trailingIcon = {
             IconButton(
                 onClick = {
                     passwordVisible = !passwordVisible
-                }
+                },
             ) {
                 Text("H")
             }
-        }
+        },
     )
 }
