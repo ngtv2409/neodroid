@@ -136,11 +136,18 @@ fun WorkspacePrepareClient(
                                 client.authPassword(host.username, password)
 
                                 // bind the connected client to the session manager
-                                sessionManager.bind(client)
+                                val boundSuccessfully = sessionManager.bind(client)
+                                if (!boundSuccessfully) {
+                                    errorMessage =
+                                        "An active SSH session is already running. Close it."
+                                    return@withContext
+                                }
                                 connectionTransferred = true
                                 // suceeded.
                             }
-                            onConnect()
+                            if (connectionTransferred) {
+                                onConnect()
+                            }
                         } catch (e: TransportException) {
                             errorMessage = when (e.disconnectReason) {
                                 DisconnectReason.HOST_KEY_NOT_VERIFIABLE ->

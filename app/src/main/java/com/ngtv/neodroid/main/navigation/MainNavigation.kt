@@ -73,8 +73,8 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
                 val host = hostHandler ?: return@composable
                 WorkspacePrepareClient(host, sessionManager) {
                     navController.navigate("workspace/session") {
-                        popUpTo("workspace/$hostId") {
-                            inclusive = true
+                        popUpTo("home") {
+                            inclusive = false
                         }
                     }
                 }

@@ -4,39 +4,55 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
+import java.io.Closeable
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
-// TODO: make this host multiple connections if needed
-// A class to manage clients lifecycl3.
-// Scaffold to update to multi sessions
-// TODO: WARN: Concurrence change of currentConnection???
-class SshSessionManager : java.io.Closeable {
+class SshSessionManager : Closeable {
     private var currentConnection: SSHClient? = null
     private var currentSession: Session? = null
+    private val lock = ReentrantLock()
 
-    fun bind(client: SSHClient) {
-        disconnect()
+    val isConnected: Boolean
+        get() = lock.withLock {
+            val conn = currentConnection
+            conn != null && conn.isConnected && conn.transport.isRunning
+        }
 
+    fun bind(client: SSHClient): Boolean = lock.withLock {
+        if (isConnected) {
+            return false // occupied
+        }
+        disconnectInternal()
         currentConnection = client
+        true
     }
-
-    fun disconnect() {
-        currentConnection?.close()
-        currentConnection = null
-        currentSession?.close()
-        currentSession = null
-    }
-
-    fun getClient(): SSHClient? = currentConnection
 
     suspend fun getSession(): Session? = withContext(Dispatchers.IO) {
-        val client = currentConnection ?: return@withContext null
+        lock.withLock {
+            val client = currentConnection ?: return@withContext null
+            val session = currentSession
 
-        currentSession ?: client.startSession().also {
-            currentSession = it
+            if (session != null && session.isOpen) {
+                session
+            } else {
+                client.startSession().also { currentSession = it }
+            }
         }
     }
 
-    override fun close() {
-        disconnect()
+    fun disconnect() = lock.withLock {
+        disconnectInternal()
+    }
+
+    private fun disconnectInternal() {
+        runCatching { currentSession?.close() }
+        currentSession = null
+        runCatching { currentConnection?.close() }
+        currentConnection = null
+    }
+
+    override fun close() = lock.withLock {
+        disconnectInternal()
     }
 }
