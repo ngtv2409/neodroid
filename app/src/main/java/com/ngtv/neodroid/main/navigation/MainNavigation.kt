@@ -42,6 +42,10 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
                 viewModel,
                 onOpenHostAdd = { navController.navigate("hosts/new") },
                 onOpenDetail = { id -> navController.navigate("hosts/details/$id") },
+                hasRunningSession = sessionManager.hasRunningSession(),
+                onBackToSession = {
+                    navController.navigate("workspace/session")
+                }
             )
         }
         composable("hosts/new") {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +32,8 @@ fun HomeScreen(
     viewModel: SSHHostViewModel,
     onOpenHostAdd: () -> Unit,
     onOpenDetail: (Int) -> Unit,
+    hasRunningSession: Boolean,
+    onBackToSession: () -> Unit
 ) {
     val hosts by viewModel.hosts.collectAsStateWithLifecycle()
     Scaffold(
@@ -59,6 +62,13 @@ fun HomeScreen(
             Column(
                 modifier = Modifier.padding(16.dp),
             ) {
+                if (hasRunningSession) {
+                    Button(
+                        onClick = onBackToSession
+                    ) {
+                        Text("Back to session")
+                    }
+                }
                 Text("Hosts", style = MaterialTheme.typography.titleMedium)
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),

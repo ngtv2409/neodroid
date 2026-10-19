@@ -28,6 +28,13 @@ class SshSessionManager : Closeable {
         true
     }
 
+    fun hasRunningSession(): Boolean = lock.withLock {
+        val client = currentConnection ?: return false
+        val session = currentSession
+
+        return session != null && session.isOpen
+    }
+
     suspend fun getSession(): Session? = withContext(Dispatchers.IO) {
         lock.withLock {
             val client = currentConnection ?: return@withContext null
