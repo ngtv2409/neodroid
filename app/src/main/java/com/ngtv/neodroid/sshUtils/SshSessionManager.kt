@@ -10,7 +10,7 @@ import kotlin.concurrent.withLock
 
 class SshSessionManager : Closeable {
     private var currentConnection: SSHClient? = null
-    private var currentSession: Session? = null
+    private var currentSession: WorkspaceSession? = null
     private val lock = ReentrantLock()
 
     val isConnected: Boolean
@@ -35,7 +35,7 @@ class SshSessionManager : Closeable {
         return session != null && session.isOpen
     }
 
-    suspend fun getSession(): Session? = withContext(Dispatchers.IO) {
+    suspend fun getSession(): WorkspaceSession? = withContext(Dispatchers.IO) {
         lock.withLock {
             val client = currentConnection ?: return@withContext null
             val session = currentSession
@@ -43,7 +43,9 @@ class SshSessionManager : Closeable {
             if (session != null && session.isOpen) {
                 session
             } else {
-                client.startSession().also { currentSession = it }
+                WorkspaceSession(client.startSession()).also {
+                    currentSession = it
+                }
             }
         }
     }

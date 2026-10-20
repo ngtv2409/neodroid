@@ -13,6 +13,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,8 +23,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.database.SSHHostEntity
+import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.sharedComponents.PasswordInput
+import com.ngtv.neodroid.sshUtils.NvimTool
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,6 +40,24 @@ import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 
 @Composable
-fun SshSessionScreen(session: Session) {
-    Text("$session")
+fun SshSessionScreen(session: WorkspaceSession) {
+    val coroutineScope = rememberCoroutineScope()
+    Column {
+        Button(
+            onClick = {
+                coroutineScope.launch {
+                    withContext(
+                        Dispatchers.IO,
+                    ) {
+                        session.startNvim()
+                    }
+                }
+            },
+        ) {
+            Text("Add")
+        }
+        if (session.tools.isNotEmpty()) {
+            Text("${(session.tools[0] as NvimTool).nvimSession.state.options}")
+        }
+    }
 }

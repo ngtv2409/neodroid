@@ -20,7 +20,9 @@ import com.ngtv.neodroid.main.screens.DetailHostScreen
 import com.ngtv.neodroid.main.screens.HomeScreen
 import com.ngtv.neodroid.main.screens.SshSessionScreen
 import com.ngtv.neodroid.main.screens.WorkspacePrepareClient
+import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import kotlinx.coroutines.CancellationException
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.DisconnectReason
@@ -45,7 +47,7 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
                 hasRunningSession = sessionManager.hasRunningSession(),
                 onBackToSession = {
                     navController.navigate("workspace/session")
-                }
+                },
             )
         }
         composable("hosts/new") {
@@ -86,7 +88,7 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
         }
         composable("workspace/session") {
             var session by remember {
-                mutableStateOf<Session?>(null)
+                mutableStateOf<WorkspaceSession?>(null)
             }
 
             var sessionError by remember {
@@ -107,7 +109,9 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
             }
 
             when {
-                session != null -> SshSessionScreen(session!!)
+                session != null -> {
+                    SshSessionScreen(session!!)
+                }
 
                 sessionError -> {
                     LaunchedEffect(Unit) {

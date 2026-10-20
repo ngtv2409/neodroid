@@ -33,7 +33,7 @@ fun HomeScreen(
     onOpenHostAdd: () -> Unit,
     onOpenDetail: (Int) -> Unit,
     hasRunningSession: Boolean,
-    onBackToSession: () -> Unit
+    onBackToSession: () -> Unit,
 ) {
     val hosts by viewModel.hosts.collectAsStateWithLifecycle()
     Scaffold(
@@ -64,7 +64,7 @@ fun HomeScreen(
             ) {
                 if (hasRunningSession) {
                     Button(
-                        onClick = onBackToSession
+                        onClick = onBackToSession,
                     ) {
                         Text("Back to session")
                     }
