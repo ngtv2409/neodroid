@@ -4,12 +4,12 @@ import android.util.Log
 import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimNotification
 import com.ngtv.neodroid.core.events.NvimUiEvent
-import jdk.net.Sockets.setOption
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.io.Closeable
 
 // creates a session from a (brand new) nvim client (to own ui state)
-class NvimSession private constructor(val nvim: NeovimClient) {
+class NvimSession private constructor(val nvim: NeovimClient): Closeable {
     var state = NvimState()
         private set
 
@@ -43,5 +43,9 @@ class NvimSession private constructor(val nvim: NeovimClient) {
 
             return session
         }
+    }
+
+    override fun close() {
+        nvim.close()
     }
 }

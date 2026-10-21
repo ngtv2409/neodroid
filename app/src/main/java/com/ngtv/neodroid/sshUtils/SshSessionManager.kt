@@ -32,7 +32,7 @@ class SshSessionManager : Closeable {
         val client = currentConnection ?: return false
         val session = currentSession
 
-        return session != null && session.isOpen
+        return session != null
     }
 
     suspend fun getSession(): WorkspaceSession? = withContext(Dispatchers.IO) {
@@ -40,12 +40,9 @@ class SshSessionManager : Closeable {
             val client = currentConnection ?: return@withContext null
             val session = currentSession
 
-            if (session != null && session.isOpen) {
-                session
-            } else {
-                WorkspaceSession(client.startSession()).also {
-                    currentSession = it
-                }
+            session ?:
+            WorkspaceSession(client).also {
+                currentSession = it
             }
         }
     }

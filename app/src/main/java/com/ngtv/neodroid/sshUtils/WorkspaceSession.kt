@@ -10,24 +10,32 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
+import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import java.io.Closeable
 
-sealed interface WorkspaceTool {
+sealed interface WorkspaceTool: Closeable {
     val id: String
     val title: String
 }
 
 class NvimTool(
     override val id: String,
+    val sshSession: Session,
     val nvimSession: NvimSession,
     val command: Session.Command,
 ) : WorkspaceTool {
     override val title = "Neovim"
+
+    override fun close() {
+        nvimSession.close()
+        command.close()
+        sshSession.close()
+    }
 }
 
 class WorkspaceSession(
-    private val sshSession: Session,
+    private val sshClient: SSHClient,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
 ) : Closeable {
 
@@ -35,10 +43,8 @@ class WorkspaceSession(
     var activeToolId by mutableStateOf<String?>(null)
         private set
 
-    val isOpen: Boolean
-        get() = sshSession.isOpen
-
     suspend fun startNvim(): NvimTool = withContext(Dispatchers.IO) {
+        val sshSession = sshClient.startSession()
         val cmd = sshSession.exec("nvim --embed")
         val client = NeovimClient(
             cmd.inputStream, // Neovim stdout -> client input
@@ -48,7 +54,7 @@ class WorkspaceSession(
 
         val nvimSession = NvimSession.create(client)
         val toolId = "nvim_${System.currentTimeMillis()}"
-        val tool = NvimTool(toolId, nvimSession, cmd)
+        val tool = NvimTool(toolId, sshSession, nvimSession, cmd)
 
         tools.add(tool)
         activeToolId = toolId
@@ -59,12 +65,7 @@ class WorkspaceSession(
         val tool = tools.find { it.id == id } ?: return
         tools.remove(tool)
 
-        when (tool) {
-            is NvimTool -> {
-                tool.nvimSession.nvim.close()
-                tool.command.close()
-            }
-        }
+        tool.close()
 
         if (activeToolId == id) {
             activeToolId = tools.lastOrNull()?.id
@@ -73,15 +74,9 @@ class WorkspaceSession(
 
     override fun close() {
         tools.forEach { tool ->
-            when (tool) {
-                is NvimTool -> {
-                    tool.nvimSession.nvim.close()
-                    tool.command.close()
-                }
-            }
+            tool.close()
         }
         tools.clear()
         scope.cancel()
-        sshSession.close()
     }
 }
