@@ -3,10 +3,13 @@ package com.ngtv.neodroid.main.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
@@ -52,8 +55,13 @@ fun SshSessionScreen(session: WorkspaceSession) {
     val pagerState = rememberPagerState { session.tools.size }
     val scope = rememberCoroutineScope()
 
-    Column {
-        PrimaryScrollableTabRow(selectedTabIndex = selectedTab) {
+    Column(
+        modifier = Modifier.statusBarsPadding()
+    ) {
+        PrimaryScrollableTabRow(
+            modifier = Modifier.height(40.dp),
+            selectedTabIndex = selectedTab
+        ) {
             session.tools.forEachIndexed { index, tool ->
                 Tab(
                     selected = selectedTab == index,
@@ -63,7 +71,22 @@ fun SshSessionScreen(session: WorkspaceSession) {
                             pagerState.animateScrollToPage(index)
                         }
                     },
-                    text = { Text(tool.title) }
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(tool.title)
+                            IconButton(onClick = {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        session.closeTool(tool.id)
+                                    }
+                                }
+                            }) {
+                                Text("×")
+                            }
+                        }
+                    }
                 )
             }
             IconButton(onClick = {
