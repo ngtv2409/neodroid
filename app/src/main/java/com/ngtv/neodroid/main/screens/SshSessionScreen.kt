@@ -56,11 +56,11 @@ fun SshSessionScreen(session: WorkspaceSession) {
     val scope = rememberCoroutineScope()
 
     Column(
-        modifier = Modifier.statusBarsPadding()
+        modifier = Modifier.statusBarsPadding(),
     ) {
         PrimaryScrollableTabRow(
             modifier = Modifier.height(40.dp),
-            selectedTabIndex = selectedTab
+            selectedTabIndex = selectedTab,
         ) {
             session.tools.forEachIndexed { index, tool ->
                 Tab(
@@ -73,7 +73,7 @@ fun SshSessionScreen(session: WorkspaceSession) {
                     },
                     text = {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(tool.title)
                             IconButton(onClick = {
@@ -86,7 +86,7 @@ fun SshSessionScreen(session: WorkspaceSession) {
                                 Text("×")
                             }
                         }
-                    }
+                    },
                 )
             }
             IconButton(onClick = {
@@ -102,10 +102,9 @@ fun SshSessionScreen(session: WorkspaceSession) {
 
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         ) { page ->
             Text(session.tools[page].id)
         }
-
     }
 }

@@ -9,7 +9,7 @@ import kotlinx.coroutines.launch
 import java.io.Closeable
 
 // creates a session from a (brand new) nvim client (to own ui state)
-class NvimSession private constructor(val nvim: NeovimClient): Closeable {
+class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
     var state = NvimState()
         private set
 

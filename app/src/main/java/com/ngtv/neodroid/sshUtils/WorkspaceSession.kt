@@ -14,7 +14,7 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import java.io.Closeable
 
-sealed interface WorkspaceTool: Closeable {
+sealed interface WorkspaceTool : Closeable {
     val id: String
     val title: String
 }

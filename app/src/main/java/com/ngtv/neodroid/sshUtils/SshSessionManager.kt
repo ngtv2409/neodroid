@@ -40,10 +40,10 @@ class SshSessionManager : Closeable {
             val client = currentConnection ?: return@withContext null
             val session = currentSession
 
-            session ?:
-            WorkspaceSession(client).also {
-                currentSession = it
-            }
+            session
+                ?: WorkspaceSession(client).also {
+                    currentSession = it
+                }
         }
     }
 

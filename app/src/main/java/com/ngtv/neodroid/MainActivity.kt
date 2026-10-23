@@ -1,9 +1,11 @@
 package com.ngtv.neodroid
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.os.Build
 import android.os.Bundle
@@ -20,6 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.ngtv.neodroid.database.AppDatabase
 import com.ngtv.neodroid.database.SSHHostRepository
 import com.ngtv.neodroid.database.SSHHostViewModel
@@ -27,10 +32,24 @@ import com.ngtv.neodroid.database.SSHHostViewModelFactory
 import com.ngtv.neodroid.main.navigation.MainNavigation
 import com.ngtv.neodroid.service.SshManagerService
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /* Handle Main screen, add and manage SSH hosts */
 
 class MainActivity : ComponentActivity() {
+
+    private fun relaunchFresh() {
+        // restart the app by replacing its activity
+        if (isBound) {
+            unbindService(serviceConnection)
+            isBound = false
+            sshService = null
+        }
+        startActivity(Intent(this, MainActivity::class.java))
+        finish()
+    }
+
     private var sshService by mutableStateOf<SshManagerService?>(null)
     private var isBound by mutableStateOf(false)
 
@@ -39,6 +58,18 @@ class MainActivity : ComponentActivity() {
             val localBinder = binder as SshManagerService.LocalBinder
             sshService = localBinder.getService()
             isBound = true
+            lifecycleScope.launch {
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    sshService?.isRunning?.value?.let {
+                        if (!it) {
+                            relaunchFresh()
+                        } else {
+                            sshService?.isRunning?.first { it2 -> !it2 }
+                            finishAndRemoveTask()
+                        }
+                    }
+                }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
