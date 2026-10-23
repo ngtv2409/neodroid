@@ -82,6 +82,9 @@ class NeovimClient(
                     // discard
                     // TODO: log
                 } catch (e: RpcIOException) {
+                    if (closed.get()) {
+                        break
+                    }
                     throw NvimConnectionException("input stream closed or EOF")
                 }
                 when (message) {
