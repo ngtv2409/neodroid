@@ -5,13 +5,18 @@ import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimNotification
 import com.ngtv.neodroid.core.events.NvimUiEvent
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.Closeable
 
 // creates a session from a (brand new) nvim client (to own ui state)
 class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
-    var state = NvimState()
-        private set
+    private val _state = MutableStateFlow(NvimState())
+    val state = _state.asStateFlow()
+
+    // intermidiate to hold state before flush
+    private val stateBuffer = NvimState()
 
     private val readerJob: Job = nvim.scope.launch {
         nvim.notifications.collect { notification ->
@@ -20,7 +25,11 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                     Log.v("Nvim", "Received: $event")
                     when (event) {
                         is NvimUiEvent.OptionSet -> {
-                            state.options[event.name] = event.value
+                            stateBuffer.options[event.name] = event.value
+                        }
+
+                        is NvimUiEvent.Flush -> {
+                            _state.emit(stateBuffer)
                         }
 
                         else -> {}

@@ -31,8 +31,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.nvim.NvimSession
+import com.ngtv.neodroid.nvim.NvimState
 import com.ngtv.neodroid.sharedComponents.PasswordInput
 import com.ngtv.neodroid.sshUtils.NvimTool
 import com.ngtv.neodroid.sshUtils.SshSessionManager
@@ -104,7 +106,18 @@ fun SshSessionScreen(session: WorkspaceSession) {
             state = pagerState,
             modifier = Modifier.weight(1f),
         ) { page ->
-            Text(session.tools[page].id)
+            when (val tool = session.tools[page]) {
+                is NvimTool -> {
+                    val state by tool.nvimSession.state.collectAsStateWithLifecycle()
+                    NvimStateRender(state)
+                }
+            }
         }
     }
+}
+
+
+@Composable
+fun NvimStateRender(state: NvimState) {
+    Text("$state")
 }
