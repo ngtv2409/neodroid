@@ -53,22 +53,23 @@ import net.schmizz.sshj.userauth.UserAuthException
 @Composable
 fun SshSessionScreen(session: WorkspaceSession) {
     val coroutineScope = rememberCoroutineScope()
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableIntStateOf(-1) }
     val pagerState = rememberPagerState { session.tools.size }
     val scope = rememberCoroutineScope()
+    var currentId by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier.statusBarsPadding(),
     ) {
         PrimaryScrollableTabRow(
-            modifier = Modifier.height(40.dp),
-            selectedTabIndex = selectedTab,
+            selectedTabIndex = if (selectedTab >= 0) { selectedTab } else { 0 },
         ) {
             session.tools.forEachIndexed { index, tool ->
                 Tab(
                     selected = selectedTab == index,
                     onClick = {
                         selectedTab = index
+                        currentId = tool.id
                         scope.launch {
                             pagerState.animateScrollToPage(index)
                         }
@@ -80,8 +81,27 @@ fun SshSessionScreen(session: WorkspaceSession) {
                             Text(tool.title)
                             IconButton(onClick = {
                                 scope.launch {
+                                    val closedIndex = session.tools.indexOfFirst { it.id == tool.id }
+                                    val currentIndex = session.tools.indexOfFirst { it.id == currentId }
+
                                     withContext(Dispatchers.IO) {
                                         session.closeTool(tool.id)
+                                    }
+
+                                    selectedTab = if (tool.id == currentId) {
+                                        when {
+                                            session.tools.isEmpty() -> -1
+                                            // is the last tool, go backward
+                                            closedIndex == session.tools.size -> closedIndex - 1
+                                            // is not the last tool, keep the index
+                                            // this will "advance" the tab forward
+                                            closedIndex > 0 -> closedIndex
+                                            else -> 0
+                                        }
+                                    } else if (closedIndex < currentIndex) {
+                                        currentIndex - 1
+                                    } else {
+                                        currentIndex
                                     }
                                 }
                             }) {
@@ -96,20 +116,26 @@ fun SshSessionScreen(session: WorkspaceSession) {
                     withContext(Dispatchers.IO) {
                         session.startNvim()
                     }
+                    selectedTab = session.tools.size - 1
+                    currentId = session.tools.last().id
                 }
             }) {
                 Text("+")
             }
         }
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f),
-        ) { page ->
-            when (val tool = session.tools[page]) {
-                is NvimTool -> {
-                    val state by tool.nvimSession.state.collectAsStateWithLifecycle()
-                    NvimStateRender(state)
+        if (session.tools.isEmpty()) {
+            Text("No tools available")
+        } else {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f),
+            ) { page ->
+                when (val tool = session.tools[page]) {
+                    is NvimTool -> {
+                        val state by tool.nvimSession.state.collectAsStateWithLifecycle()
+                        NvimStateRender(state)
+                    }
                 }
             }
         }
