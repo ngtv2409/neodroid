@@ -62,7 +62,11 @@ fun SshSessionScreen(session: WorkspaceSession) {
         modifier = Modifier.statusBarsPadding(),
     ) {
         PrimaryScrollableTabRow(
-            selectedTabIndex = if (selectedTab >= 0) { selectedTab } else { 0 },
+            selectedTabIndex = if (selectedTab >= 0) {
+                selectedTab
+            } else {
+                0
+            },
         ) {
             session.tools.forEachIndexed { index, tool ->
                 Tab(
@@ -81,8 +85,13 @@ fun SshSessionScreen(session: WorkspaceSession) {
                             Text(tool.title)
                             IconButton(onClick = {
                                 scope.launch {
-                                    val closedIndex = session.tools.indexOfFirst { it.id == tool.id }
-                                    val currentIndex = session.tools.indexOfFirst { it.id == currentId }
+                                    val closedIndex = session.tools.indexOfFirst {
+                                        it.id == tool.id
+                                    }
+                                    val currentIndex = session.tools.indexOfFirst {
+                                        it.id ==
+                                            currentId
+                                    }
 
                                     withContext(Dispatchers.IO) {
                                         session.closeTool(tool.id)
@@ -91,11 +100,14 @@ fun SshSessionScreen(session: WorkspaceSession) {
                                     selectedTab = if (tool.id == currentId) {
                                         when {
                                             session.tools.isEmpty() -> -1
+
                                             // is the last tool, go backward
                                             closedIndex == session.tools.size -> closedIndex - 1
+
                                             // is not the last tool, keep the index
                                             // this will "advance" the tab forward
                                             closedIndex > 0 -> closedIndex
+
                                             else -> 0
                                         }
                                     } else if (closedIndex < currentIndex) {
@@ -141,7 +153,6 @@ fun SshSessionScreen(session: WorkspaceSession) {
         }
     }
 }
-
 
 @Composable
 fun NvimStateRender(state: NvimState) {
