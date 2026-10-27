@@ -174,6 +174,12 @@ fun SshSessionScreen(session: WorkspaceSession) {
 
                         ToolType.NvimUnixSocket -> {
                             selectedToolAdd = null
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    session.startNvimConnectToSock(inputMap["socketpath"]!!)
+                                    selectedTab = session.tools.size - 1
+                                }
+                            }
                         }
 
                         else -> {}
@@ -238,6 +244,7 @@ private fun CreateToolDialog(
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                Text(tool.desc)
                 tool.fields.forEach { f ->
                     ValidatedTextField(
                         value = inputs[f.key]!!.ifBlank { "" },
@@ -272,10 +279,15 @@ private data class ToolField(
     val default: String = "",
     val validator: (String) -> String? = { null },
 )
-private enum class ToolType(val label: String, val fields: List<ToolField> = emptyList()) {
+private enum class ToolType(
+    val label: String,
+    val desc: String = "",
+    val fields: List<ToolField> = emptyList(),
+) {
     NvimEmbedded("Launch Neovim"),
     NvimUnixSocket(
         "Connect to Nvim over UNIX socket",
+        "Needs socat installed on remote",
         listOf(
             ToolField("socketpath", "Socket path", "") {
                 if (it.isBlank()) {

@@ -61,6 +61,24 @@ class WorkspaceSession(
         tool
     }
 
+    suspend fun startNvimConnectToSock(socketPath: String): NvimTool = withContext(Dispatchers.IO) {
+        val sshSession = sshClient.startSession()
+        val cmd = sshSession.exec("exec socat STDIO 'UNIX-CONNECT:$socketPath'")
+        val client = NeovimClient(
+            cmd.inputStream, // Neovim stdout -> client input
+            cmd.outputStream, // client output -> Neovim stdin
+            scope,
+        )
+
+        val nvimSession = NvimSession.create(client)
+        val toolId = "nvim_${System.currentTimeMillis()}"
+        val tool = NvimTool(toolId, sshSession, nvimSession, cmd)
+
+        tools.add(tool)
+        activeToolId = toolId
+        tool
+    }
+
     fun closeTool(id: String) {
         val tool = tools.find { it.id == id } ?: return
         tools.remove(tool)
