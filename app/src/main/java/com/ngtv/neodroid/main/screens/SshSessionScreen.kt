@@ -22,6 +22,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,98 +66,169 @@ import kotlin.collections.setValue
 
 @Composable
 fun SshSessionScreen(session: WorkspaceSession) {
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     var selectedTab by remember { mutableIntStateOf(-1) }
     val pagerState = rememberPagerState { session.tools.size }
-    val scope = rememberCoroutineScope()
+
     var currentId by remember { mutableStateOf("") }
     var selectedToolAdd by remember { mutableStateOf<ToolType?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    Box {
+    // Display each error and automatically dismiss it after 3 seconds.
+    LaunchedEffect(errorMessage) {
+        val error = errorMessage ?: return@LaunchedEffect
+
+        snackbarHostState.showSnackbar(
+            message = error,
+            duration = SnackbarDuration.Short,
+        )
+
+        errorMessage = null
+    }
+
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
+    ) { innerPadding ->
         Column(
-            modifier = Modifier.statusBarsPadding(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
         ) {
-            PrimaryScrollableTabRow(
-                selectedTabIndex = if (selectedTab >= 0) {
-                    selectedTab
-                } else {
-                    0
-                },
-            ) {
-                session.tools.forEachIndexed { index, tool ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = {
-                            selectedTab = index
-                            currentId = tool.id
-                            scope.launch {
-                                pagerState.animateScrollToPage(index)
-                            }
-                        },
-                        text = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(tool.title)
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        val closedIndex = session.tools.indexOfFirst {
-                                            it.id == tool.id
-                                        }
-                                        val currentIndex = session.tools.indexOfFirst {
-                                            it.id ==
-                                                currentId
-                                        }
-
-                                        withContext(Dispatchers.IO) {
-                                            session.closeTool(tool.id)
-                                        }
-
-                                        selectedTab = if (tool.id == currentId) {
-                                            when {
-                                                session.tools.isEmpty() -> -1
-
-                                                // is the last tool, go backward
-                                                closedIndex == session.tools.size -> closedIndex - 1
-
-                                                // is not the last tool, keep the index
-                                                // this will "advance" the tab forward
-                                                closedIndex > 0 -> closedIndex
-
-                                                else -> 0
-                                            }
-                                        } else if (closedIndex < currentIndex) {
-                                            currentIndex - 1
-                                        } else {
-                                            currentIndex
-                                        }
-                                    }
-                                }) {
-                                    Text("×")
+            if (session.tools.isNotEmpty()) {
+                PrimaryScrollableTabRow(
+                    selectedTabIndex = selectedTab.coerceIn(
+                        0,
+                        (session.tools.size - 1).coerceAtLeast(0),
+                    ),
+                    edgePadding = 4.dp,
+                    divider = {},
+                ) {
+                    session.tools.forEachIndexed { index, tool ->
+                        Tab(
+                            selected = selectedTab == index,
+                            modifier = Modifier.height(40.dp),
+                            onClick = {
+                                selectedTab = index
+                                currentId = tool.id
+                                scope.launch {
+                                    pagerState.animateScrollToPage(index)
                                 }
-                            }
+                            },
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = tool.title,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        maxLines = 1,
+                                    )
+
+                                    IconButton(
+                                        modifier = Modifier.height(28.dp),
+                                        onClick = {
+                                            scope.launch {
+                                                val closedIndex =
+                                                    session.tools.indexOfFirst {
+                                                        it.id == tool.id
+                                                    }
+                                                val currentIndex =
+                                                    session.tools.indexOfFirst {
+                                                        it.id == currentId
+                                                    }
+
+                                                withContext(Dispatchers.IO) {
+                                                    session.closeTool(tool.id)
+                                                }
+
+                                                selectedTab =
+                                                    if (tool.id == currentId) {
+                                                        when {
+                                                            session.tools.isEmpty() -> -1
+
+                                                            closedIndex == session.tools.size ->
+                                                                closedIndex - 1
+
+                                                            closedIndex > 0 -> closedIndex
+
+                                                            else -> 0
+                                                        }
+                                                    } else if (
+                                                        closedIndex < currentIndex
+                                                    ) {
+                                                        currentIndex - 1
+                                                    } else {
+                                                        currentIndex
+                                                    }
+
+                                                if (session.tools.isNotEmpty()) {
+                                                    val newIndex = selectedTab.coerceIn(
+                                                        0,
+                                                        session.tools.lastIndex,
+                                                    )
+                                                    selectedTab = newIndex
+                                                    currentId =
+                                                        session.tools[newIndex].id
+                                                    pagerState.scrollToPage(newIndex)
+                                                } else {
+                                                    currentId = ""
+                                                }
+                                            }
+                                        },
+                                    ) {
+                                        Text("×")
+                                    }
+                                }
+                            },
+                        )
+                    }
+
+                    AddToolDropdown(
+                        onToolSelected = { tool ->
+                            selectedToolAdd = tool
                         },
                     )
                 }
-                AddToolDropdown(onToolSelected = { tool ->
-                    selectedToolAdd = tool
-                })
+            } else {
+                Row(
+                    modifier = Modifier.height(40.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AddToolDropdown(
+                        onToolSelected = { tool ->
+                            selectedToolAdd = tool
+                        },
+                    )
+                }
             }
 
             if (session.tools.isEmpty()) {
-                Text("No tools available")
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("No tools available")
+                }
             } else {
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.weight(1f),
+                    userScrollEnabled = false,
                 ) { page ->
                     when (val tool = session.tools[page]) {
                         is NvimTool -> {
                             if (tool.connectionFailure != null) {
                                 Text("Error: ${tool.connectionFailure}")
                             } else {
-                                val state by tool.nvimSession.state.collectAsStateWithLifecycle()
+                                val state by tool.nvimSession.state
+                                    .collectAsStateWithLifecycle()
                                 NvimStateRender(state)
                             }
                         }
@@ -160,66 +236,42 @@ fun SshSessionScreen(session: WorkspaceSession) {
                 }
             }
         }
-        //
-        if (selectedToolAdd != null) {
-            CreateToolDialog(
-                tool = selectedToolAdd as ToolType,
-                onDismiss = { selectedToolAdd = null },
-                onSubmit = { inputMap ->
-                    when (selectedToolAdd as ToolType) {
-                        ToolType.NvimEmbedded -> {
-                            selectedToolAdd = null
-                            scope.launch {
-                                try {
-                                    withContext(Dispatchers.IO) {
-                                        session.startNvim()
-                                        selectedTab = session.tools.size - 1
-                                    }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    errorMessage = "Error: ${e.message ?: e}"
-                                }
+    }
+
+    selectedToolAdd?.let { tool ->
+        CreateToolDialog(
+            tool = tool,
+            onDismiss = { selectedToolAdd = null },
+            onSubmit = { inputMap ->
+                selectedToolAdd = null
+
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            when (tool) {
+                                ToolType.NvimEmbedded -> session.startNvim()
+
+                                ToolType.NvimUnixSocket ->
+                                    session.startNvimConnectToSock(
+                                        inputMap["socketpath"]!!,
+                                    )
                             }
                         }
 
-                        ToolType.NvimUnixSocket -> {
-                            selectedToolAdd = null
-                            scope.launch {
-                                try {
-                                    withContext(Dispatchers.IO) {
-                                        session.startNvimConnectToSock(inputMap["socketpath"]!!)
-                                        selectedTab = session.tools.size - 1
-                                    }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    errorMessage = "Error: ${e.message ?: e}"
-                                }
-                            }
+                        val lastIndex = session.tools.lastIndex
+                        if (lastIndex >= 0) {
+                            selectedTab = lastIndex
+                            currentId = session.tools[lastIndex].id
+                            pagerState.animateScrollToPage(lastIndex)
                         }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        errorMessage = "Error: ${e.message ?: e}"
                     }
-                },
-            )
-        }
-        errorMessage?.let { error ->
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                ),
-            ) {
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
-        }
+                }
+            },
+        )
     }
 }
 
