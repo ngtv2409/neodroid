@@ -67,6 +67,7 @@ fun SshSessionScreen(session: WorkspaceSession) {
     val scope = rememberCoroutineScope()
     var currentId by remember { mutableStateOf("") }
     var selectedToolAdd by remember { mutableStateOf<ToolType?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Box {
         Column(
@@ -148,8 +149,12 @@ fun SshSessionScreen(session: WorkspaceSession) {
                 ) { page ->
                     when (val tool = session.tools[page]) {
                         is NvimTool -> {
-                            val state by tool.nvimSession.state.collectAsStateWithLifecycle()
-                            NvimStateRender(state)
+                            if (tool.connectionFailure != null) {
+                                Text("Error: ${tool.connectionFailure}")
+                            } else {
+                                val state by tool.nvimSession.state.collectAsStateWithLifecycle()
+                                NvimStateRender(state)
+                            }
                         }
                     }
                 }
@@ -165,9 +170,15 @@ fun SshSessionScreen(session: WorkspaceSession) {
                         ToolType.NvimEmbedded -> {
                             selectedToolAdd = null
                             scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    session.startNvim()
-                                    selectedTab = session.tools.size - 1
+                                try {
+                                    withContext(Dispatchers.IO) {
+                                        session.startNvim()
+                                        selectedTab = session.tools.size - 1
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    errorMessage = "Error: ${e.message ?: e}"
                                 }
                             }
                         }
@@ -175,17 +186,39 @@ fun SshSessionScreen(session: WorkspaceSession) {
                         ToolType.NvimUnixSocket -> {
                             selectedToolAdd = null
                             scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    session.startNvimConnectToSock(inputMap["socketpath"]!!)
-                                    selectedTab = session.tools.size - 1
+                                try {
+                                    withContext(Dispatchers.IO) {
+                                        session.startNvimConnectToSock(inputMap["socketpath"]!!)
+                                        selectedTab = session.tools.size - 1
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    errorMessage = "Error: ${e.message ?: e}"
                                 }
                             }
                         }
-
-                        else -> {}
                     }
                 },
             )
+        }
+        errorMessage?.let { error ->
+            Card(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+            ) {
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
         }
     }
 }

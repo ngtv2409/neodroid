@@ -5,10 +5,12 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.ngtv.neodroid.core.NeovimClient
+import com.ngtv.neodroid.core.NvimConnectionException
 import com.ngtv.neodroid.nvim.NvimSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
@@ -26,6 +28,8 @@ class NvimTool(
     val command: Session.Command,
 ) : WorkspaceTool {
     override val title = "Neovim"
+
+    var connectionFailure: NvimConnectionException? = null
 
     override fun close() {
         nvimSession.close()
