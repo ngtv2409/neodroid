@@ -29,7 +29,7 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                         }
 
                         is NvimUiEvent.Flush -> {
-                            _state.emit(stateBuffer)
+                            _state.emit(stateBuffer.deepCopy())
                         }
 
                         else -> {}
