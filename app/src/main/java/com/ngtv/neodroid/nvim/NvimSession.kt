@@ -25,7 +25,25 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                     Log.v("Nvim", "Received: $event")
                     when (event) {
                         is NvimUiEvent.OptionSet -> {
-                            stateBuffer.options[event.name] = event.value
+                            stateBuffer.options[deepCopyValue(event.name)] =
+                                deepCopyValue(event.value)
+                        }
+
+                        is NvimUiEvent.ModeInfoSet -> {
+                            stateBuffer.cursorStyleEnabled = event.cursor_style_enabled
+                            stateBuffer.modeInfo = event.mode_info
+                        }
+
+                        is NvimUiEvent.ModeChange -> {
+                            stateBuffer.modeIndex = event.mode_idx
+                        }
+
+                        is NvimUiEvent.BusyStart -> {
+                            stateBuffer.isBusy = true
+                        }
+
+                        is NvimUiEvent.BusyStop -> {
+                            stateBuffer.isBusy = false
                         }
 
                         is NvimUiEvent.Flush -> {

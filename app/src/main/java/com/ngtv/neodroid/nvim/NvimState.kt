@@ -1,22 +1,34 @@
 package com.ngtv.neodroid.nvim
 
+import com.ngtv.neodroid.core.events.ModeProperty
 import java.util.ArrayList
 import java.util.IdentityHashMap
 import java.util.LinkedHashMap
 
 /* Hold neovim UI states for rendering */
-data class NvimState(val options: MutableMap<String, Any?> = mutableMapOf()) {
+data class NvimState(
+    val options: MutableMap<String, Any?> = mutableMapOf(),
+    var modeInfo: List<ModeProperty> = mutableListOf(),
+    var cursorStyleEnabled: Boolean = true,
+    var modeIndex: Long = 0,
+    var isBusy: Boolean = false,
+) {
     fun deepCopy(): NvimState = NvimState(
-        options = options.mapValuesTo(LinkedHashMap()) { (_, value) ->
-            deepCopyValue(value)
-        }.toMutableMap(),
+        options = deepCopyValue(options),
+        modeInfo = deepCopyValue(modeInfo),
     )
 }
 
 /**
  * Deep-copies values supported by the MessagePack RPC implementation.
  */
-private fun deepCopyValue(value: Any?): Any? = when (value) {
+
+@Suppress("UNCHECKED_CAST")
+internal fun <T> deepCopyValue(value: T): T {
+    if (value == null) return null as T
+    return internalDeepCopyValue(value) as T
+}
+private fun internalDeepCopyValue(value: Any?): Any? = when (value) {
     null -> null
 
     is Boolean,
