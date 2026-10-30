@@ -1,9 +1,12 @@
 package com.ngtv.neodroid.nvim
 
+import com.ngtv.neodroid.core.events.HighlightAttr
 import com.ngtv.neodroid.core.events.ModeProperty
 import java.util.ArrayList
 import java.util.IdentityHashMap
 import java.util.LinkedHashMap
+
+data class DefaultColorsClass(val foreground: Long, val background: Long, val special: Long)
 
 /* Hold neovim UI states for rendering */
 data class NvimState(
@@ -12,10 +15,15 @@ data class NvimState(
     var cursorStyleEnabled: Boolean = true,
     var modeIndex: Long = 0,
     var isBusy: Boolean = false,
+
+    var defaultColors: DefaultColorsClass = DefaultColorsClass(0, 0xFFFFFF, 0xFFFFFF),
+    val highlights: MutableMap<Long, HighlightAttr> = mutableMapOf(),
 ) {
-    fun deepCopy(): NvimState = NvimState(
+    fun deepCopy(): NvimState = this.copy(
         options = deepCopyValue(options),
         modeInfo = deepCopyValue(modeInfo),
+        defaultColors = defaultColors.copy(),
+        highlights = highlights.mapValuesTo(mutableMapOf()) { (_, item) -> item.copy() },
     )
 }
 

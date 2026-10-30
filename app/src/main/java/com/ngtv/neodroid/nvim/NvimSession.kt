@@ -25,8 +25,7 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                     Log.v("Nvim", "Received: $event")
                     when (event) {
                         is NvimUiEvent.OptionSet -> {
-                            stateBuffer.options[deepCopyValue(event.name)] =
-                                deepCopyValue(event.value)
+                            stateBuffer.options[event.name] = event.value
                         }
 
                         is NvimUiEvent.ModeInfoSet -> {
@@ -48,6 +47,15 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
 
                         is NvimUiEvent.Flush -> {
                             _state.emit(stateBuffer.deepCopy())
+                        }
+
+                        is NvimUiEvent.DefaultColorSet -> {
+                            stateBuffer.defaultColors =
+                                DefaultColorsClass(event.rgb_fg, event.rgb_bg, event.rgb_sp)
+                        }
+
+                        is NvimUiEvent.HlAttrDefine -> {
+                            stateBuffer.highlights[event.id] = event.rgb_attr
                         }
 
                         else -> {}
