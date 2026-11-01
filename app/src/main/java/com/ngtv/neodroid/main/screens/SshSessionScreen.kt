@@ -1,5 +1,8 @@
 package com.ngtv.neodroid.main.screens
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +13,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -42,11 +48,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.nvim.NvimState
+import com.ngtv.neodroid.nvim.hlIdToStyle
+import com.ngtv.neodroid.nvim.nvimRgbColor
 import com.ngtv.neodroid.sharedComponents.PasswordInput
 import com.ngtv.neodroid.sharedComponents.ValidatedTextField
 import com.ngtv.neodroid.sshUtils.NvimTool
@@ -277,7 +295,111 @@ fun SshSessionScreen(session: WorkspaceSession) {
 
 @Composable
 fun NvimStateRender(state: NvimState) {
-    Text("$state")
+    val grid = state.grid
+
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    val fontSize = 14.sp
+    val lineHeight = 18.sp
+
+    val baseTextStyle = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+    )
+
+    val cellMetrics = remember(textMeasurer, baseTextStyle, density) {
+        textMeasurer.measure(
+            text = androidx.compose.ui.text.AnnotatedString("M"),
+            style = baseTextStyle,
+        ).size
+    }
+
+    val cellWidthPx = cellMetrics.width.toFloat()
+    val cellHeightPx = cellMetrics.height.toFloat()
+
+    val cellWidthDp = with(density) {
+        cellMetrics.width.toDp()
+    }
+
+    val cellHeightDp = with(density) {
+        cellMetrics.height.toDp()
+    }
+
+    val defaultStyle = state.defaultColors
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(defaultStyle.background)
+            .horizontalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState()),
+    ) {
+        if (grid == null) {
+            Text("Waiting for Neovim UI...")
+            return@Box
+        }
+
+        val columns = grid.maxOfOrNull { it.size } ?: 0
+        val rows = grid.size
+
+        Canvas(
+            modifier = Modifier
+                .width(cellWidthDp * columns.coerceAtLeast(1))
+                .height(cellHeightDp * rows.coerceAtLeast(1)),
+        ) {
+            grid.forEachIndexed { rowIndex, row ->
+                row.forEachIndexed { colIndex, cell ->
+                    val highlight = state.hlIdToStyle(cell.highlightId)
+
+                    val background = highlight.background
+                        .takeUnless { it == Color.Unspecified }
+                        ?: defaultStyle.background
+
+                    drawRect(
+                        color = background,
+                        topLeft = Offset(
+                            x = colIndex * cellWidthPx,
+                            y = rowIndex * cellHeightPx,
+                        ),
+                        size = androidx.compose.ui.geometry.Size(
+                            width = cellWidthPx,
+                            height = cellHeightPx,
+                        ),
+                    )
+                }
+            }
+
+            grid.forEachIndexed { rowIndex, row ->
+                row.forEachIndexed { colIndex, cell ->
+                    if (cell.character.isEmpty()) return@forEachIndexed
+
+                    val highlight = state.hlIdToStyle(cell.highlightId)
+
+                    val textStyle = baseTextStyle
+                        .copy(color = defaultStyle.color)
+                        .merge(
+                            highlight.copy(
+                                background = Color.Unspecified,
+                            ),
+                        )
+
+                    drawText(
+                        textMeasurer = textMeasurer,
+                        text = cell.character,
+                        topLeft = Offset(
+                            x = colIndex * cellWidthPx,
+                            y = rowIndex * cellHeightPx,
+                        ),
+                        style = textStyle,
+                        softWrap = false,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

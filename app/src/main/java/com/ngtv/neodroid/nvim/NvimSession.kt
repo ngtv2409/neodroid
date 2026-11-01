@@ -1,6 +1,8 @@
 package com.ngtv.neodroid.nvim
 
 import android.util.Log
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
 import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimNotification
 import com.ngtv.neodroid.core.events.NvimUiEvent
@@ -22,7 +24,6 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
         nvim.notifications.collect { notification ->
             if (notification is NvimNotification.Redraw) {
                 notification.events.forEach { event ->
-                    Log.v("Nvim", "Received: $event")
                     when (event) {
                         is NvimUiEvent.OptionSet -> {
                             stateBuffer.options[event.name] = event.value
@@ -50,12 +51,15 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                         }
 
                         is NvimUiEvent.DefaultColorSet -> {
-                            stateBuffer.defaultColors =
-                                DefaultColorsClass(event.rgb_fg, event.rgb_bg, event.rgb_sp)
+                            stateBuffer.defaultColors = SpanStyle(
+                                color = nvimRgbColor(event.rgb_fg),
+                                background = nvimRgbColor(event.rgb_bg),
+                            )
                         }
 
                         is NvimUiEvent.HlAttrDefine -> {
-                            stateBuffer.highlights[event.id.toInt()] = event.rgb_attr
+                            stateBuffer.highlightStyles[event.id.toInt()] =
+                                nvimAttrToStyle(event.rgb_attr)
                         }
 
                         is NvimUiEvent.GridResize -> {
@@ -71,8 +75,8 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                                 event.cells.forEach { cell ->
                                     val character = cell.text
                                     val hlId = (cell.hl_id ?: lastHlId).toInt()
-                                    val repeat = cell.repeat ?: 1
-                                    for (i in 0..repeat) {
+                                    val repeat = cell.repeat?.toInt() ?: 1
+                                    repeat(repeat) {
                                         currentGrid[event.row.toInt()][col.toInt()] =
                                             GridCell(character, hlId)
                                         ++col
