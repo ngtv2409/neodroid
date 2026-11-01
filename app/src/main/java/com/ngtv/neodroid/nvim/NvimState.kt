@@ -17,7 +17,9 @@ data class NvimState(
     var isBusy: Boolean = false,
 
     var defaultColors: DefaultColorsClass = DefaultColorsClass(0, 0xFFFFFF, 0xFFFFFF),
-    val highlights: MutableMap<Long, HighlightAttr> = mutableMapOf(),
+    val highlights: MutableMap<Int, HighlightAttr> = mutableMapOf(),
+
+    var grid: MutableList<MutableList<GridCell>>? = null,
 ) {
     fun deepCopy(): NvimState = this.copy(
         options = deepCopyValue(options),
@@ -61,3 +63,5 @@ private fun internalDeepCopyValue(value: Any?): Any? = when (value) {
         "Unsupported type for deep copy: ${value::class.qualifiedName}",
     )
 }
+
+data class GridCell(val character: String, val highlightId: Int)

@@ -55,7 +55,30 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                         }
 
                         is NvimUiEvent.HlAttrDefine -> {
-                            stateBuffer.highlights[event.id] = event.rgb_attr
+                            stateBuffer.highlights[event.id.toInt()] = event.rgb_attr
+                        }
+
+                        is NvimUiEvent.GridResize -> {
+                            stateBuffer.grid = MutableList(event.height.toInt()) {
+                                MutableList(event.width.toInt()) { GridCell(" ", -1) }
+                            }
+                        }
+
+                        is NvimUiEvent.GridLine -> {
+                            stateBuffer.grid?.let { currentGrid ->
+                                var lastHlId = -1
+                                var col = event.col_start
+                                event.cells.forEach { cell ->
+                                    val character = cell.text
+                                    val hlId = (cell.hl_id ?: lastHlId).toInt()
+                                    val repeat = cell.repeat ?: 1
+                                    for (i in 0..repeat) {
+                                        currentGrid[event.row.toInt()][col.toInt()] =
+                                            GridCell(character, hlId)
+                                        ++col
+                                    }
+                                }
+                            }
                         }
 
                         else -> {}
