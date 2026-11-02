@@ -65,7 +65,7 @@ import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.nvim.NvimState
-import com.ngtv.neodroid.nvim.buildTextRuns
+import com.ngtv.neodroid.nvim.buildRuns
 import com.ngtv.neodroid.nvim.hlIdToStyle
 import com.ngtv.neodroid.nvim.nvimRgbColor
 import com.ngtv.neodroid.sharedComponents.PasswordInput
@@ -353,31 +353,23 @@ fun NvimStateRender(state: NvimState) {
                 .width(cellWidthDp * columns.coerceAtLeast(1))
                 .height(cellHeightDp * rows.coerceAtLeast(1)),
         ) {
-            grid.forEachIndexed { rowIndex, row ->
-                row.forEachIndexed { colIndex, cell ->
-                    val highlight = state.hlIdToStyle(cell.highlightId)
+            val runs = state.buildRuns()
 
-                    val background = highlight.background
-                        .takeUnless { it == Color.Unspecified }
-                        ?: defaultStyle.background
-
-                    drawRect(
-                        color = background,
-                        topLeft = Offset(
-                            x = colIndex * cellWidthPx,
-                            y = rowIndex * cellHeightPx,
-                        ),
-                        size = androidx.compose.ui.geometry.Size(
-                            width = cellWidthPx,
-                            height = cellHeightPx,
-                        ),
-                    )
-                }
+            runs.second.forEach { run ->
+                drawRect(
+                    color = run.color,
+                    topLeft = Offset(
+                        x = run.startColumn * cellWidthPx,
+                        y = run.row * cellHeightPx,
+                    ),
+                    size = androidx.compose.ui.geometry.Size(
+                        width = run.length * cellWidthPx,
+                        height = cellHeightPx,
+                    ),
+                )
             }
 
-            val runs = buildTextRuns(grid)
-
-            runs.forEach { run ->
+            runs.first.forEach { run ->
                 drawText(
                     textMeasurer = textMeasurer,
                     text = run.text,
@@ -385,10 +377,7 @@ fun NvimStateRender(state: NvimState) {
                         run.startColumn * cellWidthPx,
                         run.row * cellHeightPx,
                     ),
-                    style = baseTextStyle.merge(
-                        state.hlIdToStyle(run.highlightId)
-                            .copy(background = Color.Unspecified),
-                    ),
+                    style = baseTextStyle.merge(run.style),
                     softWrap = false,
                     maxLines = 1,
                 )

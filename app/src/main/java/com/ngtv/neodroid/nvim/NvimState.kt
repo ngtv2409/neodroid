@@ -102,22 +102,53 @@ fun nvimAttrToStyle(hl: HighlightAttr): SpanStyle = SpanStyle(
     },
 )
 
-data class TextRun(val row: Int, val startColumn: Int, val text: String, val highlightId: Int)
+data class TextRun(val row: Int, val startColumn: Int, val text: String, val style: SpanStyle)
+data class BgRun(val row: Int, val startColumn: Int, val length: Int, val color: Color)
 
-fun buildTextRuns(grid: List<List<GridCell>>): List<TextRun> {
-    val runs = mutableListOf<TextRun>()
+fun NvimState.buildRuns(): Pair<List<TextRun>, List<BgRun>> {
+    val textRuns = mutableListOf<TextRun>()
+    val bgRuns = mutableListOf<BgRun>()
 
-    grid.forEachIndexed { rowIndex, row ->
+    val currentGrid = grid ?: return textRuns to bgRuns
+
+    currentGrid.forEachIndexed { rowIndex, row ->
         if (row.isEmpty()) return@forEachIndexed
 
         var start = 0
         var hlId = row[0].highlightId
         val text = StringBuilder()
 
+        fun flush(endColumn: Int) {
+            val originalStyle = hlIdToStyle(hlId)
+
+            textRuns.add(
+                TextRun(
+                    row = rowIndex,
+                    startColumn = start,
+                    text = text.toString(),
+                    style = originalStyle.copy(
+                        background = Color.Unspecified,
+                    ),
+                ),
+            )
+
+            if (originalStyle.background != Color.Unspecified) {
+                bgRuns.add(
+                    BgRun(
+                        row = rowIndex,
+                        startColumn = start,
+                        length = endColumn - start,
+                        color = originalStyle.background,
+                    ),
+                )
+            }
+
+            text.clear()
+        }
+
         row.forEachIndexed { col, cell ->
             if (cell.highlightId != hlId) {
-                runs.add(TextRun(rowIndex, start, text.toString(), hlId))
-                text.clear()
+                flush(col)
                 start = col
                 hlId = cell.highlightId
             }
@@ -126,9 +157,9 @@ fun buildTextRuns(grid: List<List<GridCell>>): List<TextRun> {
         }
 
         if (text.isNotEmpty()) {
-            runs.add(TextRun(rowIndex, start, text.toString(), hlId))
+            flush(row.size)
         }
     }
 
-    return runs
+    return textRuns to bgRuns
 }
