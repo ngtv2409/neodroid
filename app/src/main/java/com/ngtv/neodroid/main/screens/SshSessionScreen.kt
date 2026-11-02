@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.nvim.NvimState
@@ -305,7 +307,8 @@ fun NvimStateRender(state: NvimState) {
     val lineHeight = 18.sp
 
     val baseTextStyle = TextStyle(
-        fontFamily = FontFamily.Monospace,
+        // TODO: proper font management
+        fontFamily = FontFamily(Font(R.font.jetbrains_mono_nerdfont_bold)),
         fontSize = fontSize,
         lineHeight = lineHeight,
     )
