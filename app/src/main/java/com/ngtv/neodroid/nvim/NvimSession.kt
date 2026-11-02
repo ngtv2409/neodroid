@@ -86,6 +86,39 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                             }
                         }
 
+                        is NvimUiEvent.GridClear -> {
+                            stateBuffer.grid?.let { currentGrid ->
+                                stateBuffer.grid = MutableList(currentGrid.size) {
+                                    MutableList(currentGrid[0].size) { GridCell(" ", -1) }
+                                }
+                            }
+                        }
+
+                        is NvimUiEvent.GridScroll -> {
+                            stateBuffer.grid?.let { currentGrid ->
+                                val top = event.top.toInt()
+                                val bot = event.bot.toInt()
+                                val left = event.left.toInt()
+                                val right = event.right.toInt()
+                                val rows = event.rows.toInt()
+
+                                // memmove-like scroll to move in place
+                                if (rows > 0) {
+                                    for (r in top until bot - rows) {
+                                        for (c in left until right) {
+                                            currentGrid[r][c] = currentGrid[r + rows][c]
+                                        }
+                                    }
+                                } else if (rows < 0) {
+                                    for (r in bot - 1 downTo top - rows) {
+                                        for (c in left until right) {
+                                            currentGrid[r][c] = currentGrid[r + rows][c]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         else -> {}
                     }
                 }
