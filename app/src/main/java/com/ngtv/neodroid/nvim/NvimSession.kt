@@ -102,8 +102,41 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                                 val right = event.right.toInt()
                                 val rows = event.rows.toInt()
 
+                                // the entire line is moved, we can just move its reference for no-copy move
+                                if (left == 0 && right == currentGrid[0].size) {
+                                    if (rows > 0) {
+                                        val recycledRows = currentGrid.subList(
+                                            top,
+                                            top + rows,
+                                        ).toList()
+
+                                        for (r in top until bot - rows) {
+                                            currentGrid[r] = currentGrid[r + rows]
+                                        }
+
+                                        for (i in 0 until rows) {
+                                            val row = recycledRows[i]
+                                            currentGrid[bot - rows + i] = row
+                                        }
+                                    } else if (rows < 0) {
+                                        val count = -rows
+                                        val recycledRows = currentGrid.subList(
+                                            bot - count,
+                                            bot,
+                                        ).toList()
+
+                                        for (r in bot - 1 downTo top + count) {
+                                            currentGrid[r] = currentGrid[r - count]
+                                        }
+
+                                        for (i in 0 until count) {
+                                            val row = recycledRows[i]
+                                            currentGrid[top + i] = row
+                                        }
+                                    }
+                                }
                                 // memmove-like scroll to move in place
-                                if (rows > 0) {
+                                else if (rows > 0) {
                                     for (r in top until bot - rows) {
                                         for (c in left until right) {
                                             currentGrid[r][c] = currentGrid[r + rows][c]
