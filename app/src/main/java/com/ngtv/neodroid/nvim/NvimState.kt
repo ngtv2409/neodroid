@@ -29,10 +29,8 @@ data class NvimState(
     fun deepCopy(): NvimState = this.copy(
         options = deepCopyValue(options),
         modeInfo = modeInfo.map { it.copy() },
-        defaultColors = defaultColors.copy(),
-        highlightStyles = highlightStyles.mapValuesTo(mutableMapOf()) { (_, item) ->
-            item.copy()
-        },
+        defaultColors = defaultColors,
+        highlightStyles = highlightStyles.toMutableMap(),
         grid = grid?.map { row ->
             row.toMutableList()
         }?.toMutableList(),
@@ -103,3 +101,34 @@ fun nvimAttrToStyle(hl: HighlightAttr): SpanStyle = SpanStyle(
         }
     },
 )
+
+data class TextRun(val row: Int, val startColumn: Int, val text: String, val highlightId: Int)
+
+fun buildTextRuns(grid: List<List<GridCell>>): List<TextRun> {
+    val runs = mutableListOf<TextRun>()
+
+    grid.forEachIndexed { rowIndex, row ->
+        if (row.isEmpty()) return@forEachIndexed
+
+        var start = 0
+        var hlId = row[0].highlightId
+        val text = StringBuilder()
+
+        row.forEachIndexed { col, cell ->
+            if (cell.highlightId != hlId) {
+                runs.add(TextRun(rowIndex, start, text.toString(), hlId))
+                text.clear()
+                start = col
+                hlId = cell.highlightId
+            }
+
+            text.append(cell.character)
+        }
+
+        if (text.isNotEmpty()) {
+            runs.add(TextRun(rowIndex, start, text.toString(), hlId))
+        }
+    }
+
+    return runs
+}

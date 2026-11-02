@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.nvim.NvimState
+import com.ngtv.neodroid.nvim.buildTextRuns
 import com.ngtv.neodroid.nvim.hlIdToStyle
 import com.ngtv.neodroid.nvim.nvimRgbColor
 import com.ngtv.neodroid.sharedComponents.PasswordInput
@@ -371,32 +372,23 @@ fun NvimStateRender(state: NvimState) {
                 }
             }
 
-            grid.forEachIndexed { rowIndex, row ->
-                row.forEachIndexed { colIndex, cell ->
-                    if (cell.character.isEmpty()) return@forEachIndexed
+            val runs = buildTextRuns(grid)
 
-                    val highlight = state.hlIdToStyle(cell.highlightId)
-
-                    val textStyle = baseTextStyle
-                        .copy(color = defaultStyle.color)
-                        .merge(
-                            highlight.copy(
-                                background = Color.Unspecified,
-                            ),
-                        )
-
-                    drawText(
-                        textMeasurer = textMeasurer,
-                        text = cell.character,
-                        topLeft = Offset(
-                            x = colIndex * cellWidthPx,
-                            y = rowIndex * cellHeightPx,
-                        ),
-                        style = textStyle,
-                        softWrap = false,
-                        maxLines = 1,
-                    )
-                }
+            runs.forEach { run ->
+                drawText(
+                    textMeasurer = textMeasurer,
+                    text = run.text,
+                    topLeft = Offset(
+                        run.startColumn * cellWidthPx,
+                        run.row * cellHeightPx,
+                    ),
+                    style = baseTextStyle.merge(
+                        state.hlIdToStyle(run.highlightId)
+                            .copy(background = Color.Unspecified),
+                    ),
+                    softWrap = false,
+                    maxLines = 1,
+                )
             }
         }
     }

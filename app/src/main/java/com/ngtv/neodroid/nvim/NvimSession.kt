@@ -75,6 +75,7 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                                 event.cells.forEach { cell ->
                                     val character = cell.text
                                     val hlId = (cell.hl_id ?: lastHlId).toInt()
+                                    lastHlId = hlId
                                     val repeat = cell.repeat?.toInt() ?: 1
                                     repeat(repeat) {
                                         currentGrid[event.row.toInt()][col.toInt()] =
