@@ -11,7 +11,7 @@ import java.util.ArrayList
 import java.util.IdentityHashMap
 import java.util.LinkedHashMap
 
-data class DefaultColorsClass(val foreground: Long, val background: Long, val special: Long)
+data class CursorLocation(val row: Int = 0, val col: Int = 0)
 
 /* Hold neovim UI states for rendering */
 data class NvimState(
@@ -25,6 +25,7 @@ data class NvimState(
     val highlightStyles: MutableMap<Int, SpanStyle> = mutableMapOf(),
 
     var grid: MutableList<MutableList<GridCell>>? = null,
+    var cursor: CursorLocation = CursorLocation(),
 ) {
     fun deepCopy(): NvimState = this.copy(
         options = deepCopyValue(options),
@@ -34,6 +35,7 @@ data class NvimState(
         grid = grid?.map { row ->
             row.toMutableList()
         }?.toMutableList(),
+        cursor = cursor.copy(),
     )
 }
 

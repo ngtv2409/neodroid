@@ -94,6 +94,11 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                             }
                         }
 
+                        is NvimUiEvent.GridCursorGoto -> {
+                            stateBuffer.cursor =
+                                CursorLocation(event.row.toInt(), event.col.toInt())
+                        }
+
                         is NvimUiEvent.GridScroll -> {
                             stateBuffer.grid?.let { currentGrid ->
                                 val top = event.top.toInt()

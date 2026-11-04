@@ -43,7 +43,7 @@ sealed interface NvimNotification {
 }
 
 class NeovimClient(
-    input: InputStream,
+    inputStream: InputStream,
     // TODO: output may be unsafe for concurrent writes. Mutex?
     output: OutputStream,
     parentScope: CoroutineScope,
@@ -98,7 +98,7 @@ class NeovimClient(
     // Reader to complete promises.
     private val readerJob = scope.launch(Dispatchers.IO) {
         try {
-            MessagePack.newDefaultUnpacker(NonClosingInputStream(input)).use { unpacker ->
+            MessagePack.newDefaultUnpacker(NonClosingInputStream(inputStream)).use { unpacker ->
                 while (currentCoroutineContext().isActive) {
                     val message = try {
                         unpacker.unpackRpcMessage()
@@ -209,6 +209,17 @@ class NeovimClient(
 
     suspend fun ui_attach(width: Int, height: Int, options: Map<String, Any?>) {
         val response = call("nvim_ui_attach", listOf(width, height, options))
+        if (response.error != null) {
+            throw NvimAPIException(
+                "ui_attach",
+                (response.error as? List<Any?>)?.get(0) as Long,
+                response.error[1] as String,
+            )
+        }
+    }
+
+    suspend fun input(keys: String) {
+        val response = call("input", listOf(keys))
         if (response.error != null) {
             throw NvimAPIException(
                 "ui_attach",

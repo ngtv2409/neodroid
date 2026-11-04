@@ -39,12 +39,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -283,7 +285,7 @@ fun SshSessionScreen(session: WorkspaceSession) {
                         if (lastIndex >= 0) {
                             selectedTab = lastIndex
                             currentId = session.tools[lastIndex].id
-                            pagerState.animateScrollToPage(lastIndex)
+                            pagerState.scrollToPage(lastIndex)
                         }
                     } catch (e: CancellationException) {
                         throw e
@@ -382,6 +384,19 @@ fun NvimStateRender(state: NvimState) {
                     maxLines = 1,
                 )
             }
+            // TODO: handle cursor style properly
+            // also we'll need to invert text under cursor (complicated)
+            drawRect(
+                color = Color.Black,
+                topLeft = Offset(
+                    x = state.cursor.col * cellWidthPx,
+                    y = state.cursor.row * cellHeightPx,
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = cellWidthPx / 3,
+                    height = cellHeightPx,
+                ),
+            )
         }
     }
 }
