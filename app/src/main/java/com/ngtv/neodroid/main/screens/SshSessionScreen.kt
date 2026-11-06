@@ -2,6 +2,7 @@ package com.ngtv.neodroid.main.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,11 +13,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -45,20 +49,32 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -252,7 +268,9 @@ fun SshSessionScreen(session: WorkspaceSession) {
                             } else {
                                 val state by tool.nvimSession.state
                                     .collectAsStateWithLifecycle()
-                                NvimStateRender(state)
+                                NvimStateRender(state) { input ->
+                                    tool.nvimSession.sendInput(input)
+                                }
                             }
                         }
                     }
@@ -299,11 +317,14 @@ fun SshSessionScreen(session: WorkspaceSession) {
 }
 
 @Composable
-fun NvimStateRender(state: NvimState) {
+fun NvimStateRender(state: NvimState, onInput: (String) -> Unit) {
     val grid = state.grid
 
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     val fontSize = 14.sp
     val lineHeight = 18.sp
@@ -338,65 +359,167 @@ fun NvimStateRender(state: NvimState) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(defaultStyle.background)
-            .horizontalScroll(rememberScrollState())
-            .verticalScroll(rememberScrollState()),
+            .background(defaultStyle.background),
     ) {
-        if (grid == null) {
-            Text("Waiting for Neovim UI...")
-            return@Box
-        }
-
-        val columns = grid.maxOfOrNull { it.size } ?: 0
-        val rows = grid.size
-
-        Canvas(
+        Box(
             modifier = Modifier
-                .width(cellWidthDp * columns.coerceAtLeast(1))
-                .height(cellHeightDp * rows.coerceAtLeast(1)),
+                .fillMaxSize()
+                .horizontalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState())
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
+                },
         ) {
-            val runs = state.buildRuns()
+            if (grid == null) {
+                Text("Waiting for Neovim UI...")
+                return@Box
+            }
 
-            runs.second.forEach { run ->
+            val columns = grid.maxOfOrNull { it.size } ?: 0
+            val rows = grid.size
+
+            Canvas(
+                modifier = Modifier
+                    .width(cellWidthDp * columns.coerceAtLeast(1))
+                    .height(cellHeightDp * rows.coerceAtLeast(1)),
+            ) {
+                val runs = state.buildRuns()
+
+                runs.second.forEach { run ->
+                    drawRect(
+                        color = run.color,
+                        topLeft = Offset(
+                            x = run.startColumn * cellWidthPx,
+                            y = run.row * cellHeightPx,
+                        ),
+                        size = androidx.compose.ui.geometry.Size(
+                            width = run.length * cellWidthPx,
+                            height = cellHeightPx,
+                        ),
+                    )
+                }
+
+                runs.first.forEach { run ->
+                    drawText(
+                        textMeasurer = textMeasurer,
+                        text = run.text,
+                        topLeft = Offset(
+                            run.startColumn * cellWidthPx,
+                            run.row * cellHeightPx,
+                        ),
+                        style = baseTextStyle.merge(run.style),
+                        softWrap = false,
+                        maxLines = 1,
+                    )
+                }
+                // TODO: handle cursor style properly
+                // also we'll need to invert text under cursor (complicated)
                 drawRect(
-                    color = run.color,
+                    color = Color.Black,
                     topLeft = Offset(
-                        x = run.startColumn * cellWidthPx,
-                        y = run.row * cellHeightPx,
+                        x = state.cursor.col * cellWidthPx,
+                        y = state.cursor.row * cellHeightPx,
                     ),
                     size = androidx.compose.ui.geometry.Size(
-                        width = run.length * cellWidthPx,
+                        width = cellWidthPx / 3,
                         height = cellHeightPx,
                     ),
                 )
             }
+        }
 
-            runs.first.forEach { run ->
-                drawText(
-                    textMeasurer = textMeasurer,
-                    text = run.text,
-                    topLeft = Offset(
-                        run.startColumn * cellWidthPx,
-                        run.row * cellHeightPx,
+        NvimInputCapture(
+            focusRequester = focusRequester,
+            onInput = onInput,
+        )
+    }
+}
+
+// a hidden text field captures soft keyboard input.
+// TODO: is there a better way?
+@Composable
+private fun NvimInputCapture(focusRequester: FocusRequester, onInput: (String) -> Unit) {
+    val currentOnInput by rememberUpdatedState(onInput)
+
+    var inputValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = INPUT_SENTINEL,
+                selection = TextRange(INPUT_SENTINEL.length),
+            ),
+        )
+    }
+
+    BasicTextField(
+        value = inputValue,
+        onValueChange = { newValue ->
+            currentOnInput(encodeNvimInput(inputValue.text, newValue.text))
+
+            val sanitized = if (INPUT_SENTINEL in newValue.text) {
+                newValue
+            } else {
+                TextFieldValue(
+                    text = newValue.text + INPUT_SENTINEL,
+                    selection = TextRange(
+                        newValue.text.length + INPUT_SENTINEL.length,
                     ),
-                    style = baseTextStyle.merge(run.style),
-                    softWrap = false,
-                    maxLines = 1,
                 )
             }
-            // TODO: handle cursor style properly
-            // also we'll need to invert text under cursor (complicated)
-            drawRect(
-                color = Color.Black,
-                topLeft = Offset(
-                    x = state.cursor.col * cellWidthPx,
-                    y = state.cursor.row * cellHeightPx,
-                ),
-                size = androidx.compose.ui.geometry.Size(
-                    width = cellWidthPx / 3,
-                    height = cellHeightPx,
-                ),
-            )
+
+            inputValue = if (
+                sanitized.composition == null &&
+                sanitized.text.length > MAX_INPUT_SCRATCH
+            ) {
+                TextFieldValue(
+                    text = INPUT_SENTINEL,
+                    selection = TextRange(INPUT_SENTINEL.length),
+                )
+            } else {
+                sanitized
+            }
+        },
+        modifier = Modifier
+            .size(1.dp)
+            .alpha(0f)
+            .focusRequester(focusRequester),
+        textStyle = TextStyle(
+            color = Color.Transparent,
+            fontSize = 1.sp,
+        ),
+        cursorBrush = SolidColor(Color.Transparent),
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrectEnabled = false,
+            keyboardType = KeyboardType.Password,
+            imeAction = ImeAction.None,
+        ),
+        singleLine = false,
+    )
+}
+
+private const val INPUT_SENTINEL = "\u200B"
+private const val MAX_INPUT_SCRATCH = 4096
+
+// nvim key notations
+private fun encodeNvimInput(oldText: String, newText: String): String {
+    val prefix = oldText.commonPrefixWith(newText).length
+    val maxSuffix = minOf(oldText.length, newText.length) - prefix
+    val suffix = oldText.commonSuffixWith(newText).length.coerceAtMost(maxSuffix)
+    val removed = oldText.length - prefix - suffix
+    val inserted = newText.substring(prefix, newText.length - suffix)
+
+    return buildString {
+        repeat(removed) { append("<BS>") }
+        inserted.forEach { char ->
+            when (char) {
+                '\n', '\r' -> append("<CR>")
+                '\t' -> append("<Tab>")
+                '<' -> append("<LT>")
+                else -> append(char)
+            }
         }
     }
 }

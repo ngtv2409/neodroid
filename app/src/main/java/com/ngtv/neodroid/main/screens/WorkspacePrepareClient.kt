@@ -133,6 +133,8 @@ fun WorkspacePrepareClient(
                                 }
 
                                 client.connect(host.hostname, host.port)
+                                // disable socket delay since input is sent over this socket
+                                runCatching { client.socket.tcpNoDelay = true }
                                 client.authPassword(host.username, password)
 
                                 // bind the connected client to the session manager

@@ -203,6 +203,22 @@ class NeovimClient(
         return deferred
     }
 
+    fun sendNotification(method: String, params: List<Any?>) {
+        if (closed.get() || connectionFailure.get() != null) return
+
+        try {
+            packer.packRpcMessage(RpcNotification(method, params))
+            packer.flush()
+        } catch (e: Exception) {
+            failConnection(
+                NvimConnectionException(
+                    "Failed to send Neovim notification: $method",
+                    e,
+                ),
+            )
+        }
+    }
+
     // A not so useful function that returns a raw response.
     suspend fun call(method: String, params: List<Any?>): RpcResponse =
         sendRequest(method, params).await()

@@ -6,7 +6,9 @@ import androidx.compose.ui.text.SpanStyle
 import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimNotification
 import com.ngtv.neodroid.core.events.NvimUiEvent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -162,6 +164,24 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                 }
             }
         }
+    }
+
+    private val inputQueue = Channel<String>(Channel.UNLIMITED)
+
+    private val inputJob: Job = nvim.scope.launch(Dispatchers.IO) {
+        for (keys in inputQueue) {
+            val batch = StringBuilder(keys)
+            while (true) {
+                val next = inputQueue.tryReceive().getOrNull() ?: break
+                batch.append(next)
+            }
+            nvim.sendNotification("nvim_input", listOf(batch.toString()))
+        }
+    }
+
+    fun sendInput(keys: String) {
+        if (keys.isEmpty()) return
+        inputQueue.trySend(keys)
     }
 
     companion object {
