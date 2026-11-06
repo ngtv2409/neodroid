@@ -29,3 +29,5 @@ Thumbs.db
 .kotlin/
 
 scratch/
+
+.untracked
