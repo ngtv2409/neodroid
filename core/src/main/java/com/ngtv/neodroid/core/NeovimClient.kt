@@ -78,7 +78,7 @@ class NeovimClient(
 
     private val connectionFailureSignal = CompletableDeferred<NvimConnectionException>()
 
-    private val _notifications = MutableSharedFlow<NvimNotification>()
+    private val _notifications = MutableSharedFlow<NvimNotification>(extraBufferCapacity = 64)
     val notifications: Flow<NvimNotification> = _notifications.asSharedFlow()
 
     private fun failConnection(failure: NvimConnectionException) {
