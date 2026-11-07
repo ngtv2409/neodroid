@@ -10,12 +10,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.msgpack.core.MessagePack
 import java.io.Closeable
 import java.io.InputStream
@@ -24,32 +30,123 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Duration
 
 class NvimException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
-class NvimAPIException(
-    method: String,
-    errorType: Long,
-    message: String,
-    cause: Throwable? = null,
-) : RuntimeException("[$method] E$errorType: $message", cause)
+class NvimError(error: List<Any?>) {
+    val errorType = error[0] as Long
+    val message = error[1] as String
+}
+class NvimAPIException(method: String, val error: NvimError, cause: Throwable? = null) :
+    RuntimeException("[$method] E${error.errorType}: ${error.message}", cause)
 
 class NvimConnectionException(message: String, cause: Throwable? = null) :
     RuntimeException(message, cause)
 
 sealed interface NvimNotification {
-    data class Redraw(val events: List<NvimUiEvent>) : NvimNotification
+    data class Redraw(val event: NvimUiEvent) : NvimNotification
     data class Unclassified(val raw: RpcNotification) : NvimNotification
 }
 
-class NeovimClient(
-    inputStream: InputStream,
-    // TODO: output may be unsafe for concurrent writes. Mutex?
-    output: OutputStream,
-    parentScope: CoroutineScope,
-) : Closeable {
+fun interface RpcRequestHandler {
+    suspend fun handle(request: RpcRequest): RpcReply
+}
+
+sealed interface RpcReply {
+    data class Result(val value: Any?) : RpcReply
+    data class Error(val type: Long, val message: String) : RpcReply
+}
+
+/*
+ * Communicate with Neovim over IO streams
+ *
+ * Capabilities:
+ * - Send requests and notifications to neovim
+ * - Receive responses and notifications from neovim
+ * - Expose typed variants for easy use in kotlin
+ *
+ * Uses a reader job to continuously resolve responses and notifs
+ */
+class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: CoroutineScope) :
+    Closeable {
 
     private val closed = AtomicBoolean(false)
+    private val failureRef = AtomicReference<Throwable?>(null)
+    private val _failure = MutableStateFlow<Throwable?>(null)
+    val failure: StateFlow<Throwable?> = _failure.asStateFlow()
+
+    private val clientJob = SupervisorJob(parentScope.coroutineContext[Job])
+    val scope = CoroutineScope(parentScope.coroutineContext + clientJob)
+
+    val inbound = Channel<NvimNotification>(capacity = 256)
+    private val outbound = Channel<RpcMessage>(capacity = 64)
+    private val requests = Channel<RpcRequest>(capacity = 16)
+
+    private val pending = ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
+    private val nextId = AtomicInteger(0)
+
+    private val packer = MessagePack.newDefaultPacker(NonClosingOutputStream(output))
+
+    private val readerJob = scope.launch(Dispatchers.IO) {
+        readerLoop(inputStream)
+    }
+    private val writerJob = scope.launch(Dispatchers.IO) {
+        writerLoop()
+    }
+    private val requestJob = scope.launch(Dispatchers.IO) {
+        requestLoop()
+    }
+
+    private var requestHandler: RpcRequestHandler? = null
+
+    suspend fun call(method: String, params: List<Any?>, timeoutMs: Duration? = null): Any? {
+        if (closed.get()) throw NvimConnectionException("Neovim client is closed")
+
+        val id = nextId.getAndIncrement().toUInt()
+        val deferred = CompletableDeferred<RpcResponse>()
+        pending[id] = deferred
+
+        try {
+            outbound.send(RpcRequest(id, method, params))
+            val response = if (timeoutMs == null) {
+                deferred.await()
+            } else {
+                withTimeout(timeoutMs) { deferred.await() }
+            }
+
+            val error = response.error
+            if (error != null) throw NvimAPIException(method, NvimError(error as List<Any?>))
+            return response.result
+        } finally {
+            pending.remove(id)
+        }
+    }
+
+    suspend fun notify(method: String, params: List<Any?>) {
+        if (closed.get()) throw NvimConnectionException("Neovim client is closed")
+        outbound.send(RpcNotification(method, params))
+    }
+
+    suspend fun ui_attach(width: Int, height: Int, options: Map<String, Any?>) {
+        call("nvim_ui_attach", listOf(width, height, options))
+    }
+
+    fun setRequestHandler(handler: RpcRequestHandler) {
+        requestHandler = handler
+    }
+
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+
+        pending.values.forEach { it.cancel() }
+        pending.clear()
+
+        requests.close()
+        outbound.close()
+        inbound.close()
+        clientJob.cancel()
+    }
 
     private class NonClosingOutputStream(out: OutputStream) : java.io.FilterOutputStream(out) {
         override fun close() {
@@ -62,85 +159,37 @@ class NeovimClient(
         override fun close() {}
     }
 
-    private val clientJob = SupervisorJob(parentScope.coroutineContext[Job])
-    val scope = CoroutineScope(parentScope.coroutineContext + clientJob)
+    private fun failConnection(cause: Throwable) {
+        val actual = failureRef.compareAndExchange(null, cause) ?: cause
+        _failure.value = actual
+        closed.set(true)
 
-    private val packer =
-        MessagePack.newDefaultPacker(NonClosingOutputStream(output))
-
-    private val messageId = AtomicInteger(0)
-
-    private val pending =
-        ConcurrentHashMap<UInt, CompletableDeferred<RpcResponse>>()
-
-    // record fatal exceptions so owner can await for it and know what went wrong
-    private val connectionFailure = AtomicReference<NvimConnectionException?>(null)
-
-    private val connectionFailureSignal = CompletableDeferred<NvimConnectionException>()
-
-    private val _notifications = MutableSharedFlow<NvimNotification>(extraBufferCapacity = 64)
-    val notifications: Flow<NvimNotification> = _notifications.asSharedFlow()
-
-    private fun failConnection(failure: NvimConnectionException) {
-        if (closed.get()) return
-
-        connectionFailure.compareAndSet(null, failure)
-        val actualFailure = connectionFailure.get() ?: failure
-
-        connectionFailureSignal.complete(actualFailure)
-
-        pending.values.forEach { it.completeExceptionally(actualFailure) }
+        pending.values.forEach { it.completeExceptionally(actual) }
         pending.clear()
+
+        requests.close()
+        outbound.close()
+        inbound.close(actual)
+        clientJob.cancel()
     }
 
-    suspend fun awaitConnectionFailure(): NvimConnectionException = connectionFailureSignal.await()
-
-    // Reader to complete promises.
-    private val readerJob = scope.launch(Dispatchers.IO) {
+    private suspend fun readerLoop(input: InputStream) {
         try {
-            MessagePack.newDefaultUnpacker(NonClosingInputStream(inputStream)).use { unpacker ->
+            MessagePack.newDefaultUnpacker(NonClosingInputStream(input)).use { unpacker ->
                 while (currentCoroutineContext().isActive) {
                     val message = try {
                         unpacker.unpackRpcMessage()
-                    } catch (e: RpcFormatException) {
-                        // Discard malformed messages.
-                        continue
                     } catch (e: RpcIOException) {
-                        if (closed.get()) break
-
-                        throw NvimConnectionException(
-                            "input stream closed or EOF",
-                            e,
-                        )
+                        if (closed.get()) return
+                        throw NvimConnectionException("input stream closed or EOF", e)
+                    } catch (e: RpcFormatException) {
+                        throw NvimConnectionException("malformed RPC message", e)
                     }
 
                     when (message) {
-                        is RpcResponse -> {
-                            pending.remove(message.msgid)?.complete(message)
-                        }
-
-                        is RpcNotification -> {
-                            val notif = when (message.method) {
-                                "redraw" -> {
-                                    asNestedList(message.params)?.let { params ->
-                                        NvimNotification.Redraw(
-                                            dispatchRedrawEvent(params),
-                                        )
-                                    }
-                                }
-
-                                else -> NvimNotification.Unclassified(message)
-                            }
-
-                            if (notif != null) {
-                                _notifications.emit(notif)
-                            }
-                        }
-
-                        is RpcRequest -> {
-                            // Handle request.
-                            error("not implemented")
-                        }
+                        is RpcResponse -> pending.remove(message.msgid)?.complete(message)
+                        is RpcNotification -> enqueueNotification(message)
+                        is RpcRequest -> enqueueRequest(message)
                     }
                 }
             }
@@ -149,99 +198,73 @@ class NeovimClient(
         } catch (e: NvimConnectionException) {
             failConnection(e)
         } catch (e: Exception) {
-            failConnection(
-                NvimConnectionException("Neovim reader failed", e),
-            )
+            failConnection(NvimConnectionException("Neovim reader failed", e))
         }
     }
 
-    override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-
-        clientJob.cancel()
-        pending.values.forEach { it.cancel() }
-        pending.clear()
-
-        runCatching { packer.close() }
-    }
-
-    // Send a request.
-    fun sendRequest(method: String, params: List<Any?>): CompletableDeferred<RpcResponse> {
-        connectionFailure.get()?.let { failure ->
-            return CompletableDeferred<RpcResponse>().also {
-                it.completeExceptionally(failure)
-            }
-        }
-
-        if (closed.get()) {
-            return CompletableDeferred<RpcResponse>().also {
-                it.completeExceptionally(
-                    NvimConnectionException("Neovim client is closed"),
-                )
-            }
-        }
-
-        val id = messageId.getAndIncrement().toUInt()
-        val deferred = CompletableDeferred<RpcResponse>()
-        pending[id] = deferred
-
+    private suspend fun writerLoop() {
         try {
-            packer.packRpcMessage(RpcRequest(id, method, params))
-            packer.flush()
+            for (message in outbound) {
+                packer.packRpcMessage(message)
+                packer.flush()
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            pending.remove(id)
-            val connectionError = NvimConnectionException(
-                "Failed to send Neovim request: $method",
-                e,
-            )
-            failConnection(connectionError)
-            deferred.completeExceptionally(
-                connectionFailure.get() ?: connectionError,
-            )
-        }
-
-        return deferred
-    }
-
-    fun sendNotification(method: String, params: List<Any?>) {
-        if (closed.get() || connectionFailure.get() != null) return
-
-        try {
-            packer.packRpcMessage(RpcNotification(method, params))
-            packer.flush()
-        } catch (e: Exception) {
-            failConnection(
-                NvimConnectionException(
-                    "Failed to send Neovim notification: $method",
-                    e,
-                ),
-            )
+            failConnection(NvimConnectionException("Neovim writer failed", e))
+        } finally {
+            runCatching { packer.close() }
         }
     }
 
-    // A not so useful function that returns a raw response.
-    suspend fun call(method: String, params: List<Any?>): RpcResponse =
-        sendRequest(method, params).await()
+    private suspend fun requestLoop() {
+        for (request in requests) {
+            val reply = try {
+                requestHandler?.handle(request)
+                    ?: RpcReply.Error(0L, "unsupported client request: ${request.method}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: NvimAPIException) {
+                RpcReply.Error(e.error.errorType, e.message ?: "Neovim API error")
+            } catch (e: Exception) {
+                RpcReply.Error(0L, e.message ?: e.toString())
+            }
 
-    suspend fun ui_attach(width: Int, height: Int, options: Map<String, Any?>) {
-        val response = call("nvim_ui_attach", listOf(width, height, options))
-        if (response.error != null) {
-            throw NvimAPIException(
-                "ui_attach",
-                (response.error as? List<Any?>)?.get(0) as Long,
-                response.error[1] as String,
+            outbound.send(
+                when (reply) {
+                    is RpcReply.Result -> RpcResponse(request.msgid, null, reply.value)
+
+                    is RpcReply.Error -> RpcResponse(
+                        request.msgid,
+                        listOf(reply.type, reply.message),
+                        null,
+                    )
+                },
             )
         }
     }
 
-    suspend fun input(keys: String) {
-        val response = call("input", listOf(keys))
-        if (response.error != null) {
-            throw NvimAPIException(
-                "ui_attach",
-                (response.error as? List<Any?>)?.get(0) as Long,
-                response.error[1] as String,
-            )
+    private suspend fun enqueueNotification(message: RpcNotification) {
+        if (message.method == "redraw") {
+            val params = asNestedList(message.params) ?: return
+            for (event in dispatchRedrawEvent(params)) {
+                inbound.send(NvimNotification.Redraw(event))
+            }
+        } else {
+            inbound.send(NvimNotification.Unclassified(message))
+        }
+    }
+    private fun enqueueRequest(request: RpcRequest) {
+        if (requests.trySend(request).isSuccess) return
+
+        // Reply with an error to not block
+        val reply = RpcResponse(
+            request.msgid,
+            listOf(0L, "client request queue is full"),
+            null,
+        )
+        if (outbound.trySend(reply).isFailure) {
+            failConnection(NvimConnectionException("client request overflow"))
         }
     }
 }

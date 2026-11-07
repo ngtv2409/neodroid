@@ -23,144 +23,142 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
     private val stateBuffer = NvimState()
 
     private val readerJob: Job = nvim.scope.launch {
-        nvim.notifications.collect { notification ->
+        for (notification in nvim.inbound) {
             if (notification is NvimNotification.Redraw) {
-                notification.events.forEach { event ->
-                    when (event) {
-                        is NvimUiEvent.OptionSet -> {
-                            stateBuffer.options[event.name] = event.value
-                        }
+                when (val event = notification.event) {
+                    is NvimUiEvent.OptionSet -> {
+                        stateBuffer.options[event.name] = event.value
+                    }
 
-                        is NvimUiEvent.ModeInfoSet -> {
-                            stateBuffer.cursorStyleEnabled = event.cursor_style_enabled
-                            stateBuffer.modeInfo = event.mode_info
-                        }
+                    is NvimUiEvent.ModeInfoSet -> {
+                        stateBuffer.cursorStyleEnabled = event.cursor_style_enabled
+                        stateBuffer.modeInfo = event.mode_info
+                    }
 
-                        is NvimUiEvent.ModeChange -> {
-                            stateBuffer.modeIndex = event.mode_idx
-                        }
+                    is NvimUiEvent.ModeChange -> {
+                        stateBuffer.modeIndex = event.mode_idx
+                    }
 
-                        is NvimUiEvent.BusyStart -> {
-                            stateBuffer.isBusy = true
-                        }
+                    is NvimUiEvent.BusyStart -> {
+                        stateBuffer.isBusy = true
+                    }
 
-                        is NvimUiEvent.BusyStop -> {
-                            stateBuffer.isBusy = false
-                        }
+                    is NvimUiEvent.BusyStop -> {
+                        stateBuffer.isBusy = false
+                    }
 
-                        is NvimUiEvent.Flush -> {
-                            _state.emit(stateBuffer.deepCopy())
-                        }
+                    is NvimUiEvent.Flush -> {
+                        _state.emit(stateBuffer.deepCopy())
+                    }
 
-                        is NvimUiEvent.DefaultColorSet -> {
-                            stateBuffer.defaultColors = SpanStyle(
-                                color = nvimRgbColor(event.rgb_fg),
-                                background = nvimRgbColor(event.rgb_bg),
-                            )
-                        }
+                    is NvimUiEvent.DefaultColorSet -> {
+                        stateBuffer.defaultColors = SpanStyle(
+                            color = nvimRgbColor(event.rgb_fg),
+                            background = nvimRgbColor(event.rgb_bg),
+                        )
+                    }
 
-                        is NvimUiEvent.HlAttrDefine -> {
-                            stateBuffer.highlightStyles[event.id.toInt()] =
-                                nvimAttrToStyle(event.rgb_attr)
-                        }
+                    is NvimUiEvent.HlAttrDefine -> {
+                        stateBuffer.highlightStyles[event.id.toInt()] =
+                            nvimAttrToStyle(event.rgb_attr)
+                    }
 
-                        is NvimUiEvent.GridResize -> {
-                            stateBuffer.grid = MutableList(event.height.toInt()) {
-                                MutableList(event.width.toInt()) { GridCell(" ", -1) }
-                            }
+                    is NvimUiEvent.GridResize -> {
+                        stateBuffer.grid = MutableList(event.height.toInt()) {
+                            MutableList(event.width.toInt()) { GridCell(" ", -1) }
                         }
+                    }
 
-                        is NvimUiEvent.GridLine -> {
-                            stateBuffer.grid?.let { currentGrid ->
-                                var lastHlId = -1
-                                var col = event.col_start
-                                event.cells.forEach { cell ->
-                                    val character = cell.text
-                                    val hlId = (cell.hl_id ?: lastHlId).toInt()
-                                    lastHlId = hlId
-                                    val repeat = cell.repeat?.toInt() ?: 1
-                                    repeat(repeat) {
-                                        currentGrid[event.row.toInt()][col.toInt()] =
-                                            GridCell(character, hlId)
-                                        ++col
-                                    }
+                    is NvimUiEvent.GridLine -> {
+                        stateBuffer.grid?.let { currentGrid ->
+                            var lastHlId = -1
+                            var col = event.col_start
+                            event.cells.forEach { cell ->
+                                val character = cell.text
+                                val hlId = (cell.hl_id ?: lastHlId).toInt()
+                                lastHlId = hlId
+                                val repeat = cell.repeat?.toInt() ?: 1
+                                repeat(repeat) {
+                                    currentGrid[event.row.toInt()][col.toInt()] =
+                                        GridCell(character, hlId)
+                                    ++col
                                 }
                             }
                         }
+                    }
 
-                        is NvimUiEvent.GridClear -> {
-                            stateBuffer.grid?.let { currentGrid ->
-                                stateBuffer.grid = MutableList(currentGrid.size) {
-                                    MutableList(currentGrid[0].size) { GridCell(" ", -1) }
-                                }
+                    is NvimUiEvent.GridClear -> {
+                        stateBuffer.grid?.let { currentGrid ->
+                            stateBuffer.grid = MutableList(currentGrid.size) {
+                                MutableList(currentGrid[0].size) { GridCell(" ", -1) }
                             }
                         }
+                    }
 
-                        is NvimUiEvent.GridCursorGoto -> {
-                            stateBuffer.cursor =
-                                CursorLocation(event.row.toInt(), event.col.toInt())
-                        }
+                    is NvimUiEvent.GridCursorGoto -> {
+                        stateBuffer.cursor =
+                            CursorLocation(event.row.toInt(), event.col.toInt())
+                    }
 
-                        is NvimUiEvent.GridScroll -> {
-                            stateBuffer.grid?.let { currentGrid ->
-                                val top = event.top.toInt()
-                                val bot = event.bot.toInt()
-                                val left = event.left.toInt()
-                                val right = event.right.toInt()
-                                val rows = event.rows.toInt()
+                    is NvimUiEvent.GridScroll -> {
+                        stateBuffer.grid?.let { currentGrid ->
+                            val top = event.top.toInt()
+                            val bot = event.bot.toInt()
+                            val left = event.left.toInt()
+                            val right = event.right.toInt()
+                            val rows = event.rows.toInt()
 
-                                // the entire line is moved, we can just move its reference for no-copy move
-                                if (left == 0 && right == currentGrid[0].size) {
-                                    if (rows > 0) {
-                                        val recycledRows = currentGrid.subList(
-                                            top,
-                                            top + rows,
-                                        ).toList()
+                            // the entire line is moved, we can just move its reference for no-copy move
+                            if (left == 0 && right == currentGrid[0].size) {
+                                if (rows > 0) {
+                                    val recycledRows = currentGrid.subList(
+                                        top,
+                                        top + rows,
+                                    ).toList()
 
-                                        for (r in top until bot - rows) {
-                                            currentGrid[r] = currentGrid[r + rows]
-                                        }
-
-                                        for (i in 0 until rows) {
-                                            val row = recycledRows[i]
-                                            currentGrid[bot - rows + i] = row
-                                        }
-                                    } else if (rows < 0) {
-                                        val count = -rows
-                                        val recycledRows = currentGrid.subList(
-                                            bot - count,
-                                            bot,
-                                        ).toList()
-
-                                        for (r in bot - 1 downTo top + count) {
-                                            currentGrid[r] = currentGrid[r - count]
-                                        }
-
-                                        for (i in 0 until count) {
-                                            val row = recycledRows[i]
-                                            currentGrid[top + i] = row
-                                        }
-                                    }
-                                }
-                                // memmove-like scroll to move in place
-                                else if (rows > 0) {
                                     for (r in top until bot - rows) {
-                                        for (c in left until right) {
-                                            currentGrid[r][c] = currentGrid[r + rows][c]
-                                        }
+                                        currentGrid[r] = currentGrid[r + rows]
+                                    }
+
+                                    for (i in 0 until rows) {
+                                        val row = recycledRows[i]
+                                        currentGrid[bot - rows + i] = row
                                     }
                                 } else if (rows < 0) {
-                                    for (r in bot - 1 downTo top - rows) {
-                                        for (c in left until right) {
-                                            currentGrid[r][c] = currentGrid[r + rows][c]
-                                        }
+                                    val count = -rows
+                                    val recycledRows = currentGrid.subList(
+                                        bot - count,
+                                        bot,
+                                    ).toList()
+
+                                    for (r in bot - 1 downTo top + count) {
+                                        currentGrid[r] = currentGrid[r - count]
+                                    }
+
+                                    for (i in 0 until count) {
+                                        val row = recycledRows[i]
+                                        currentGrid[top + i] = row
+                                    }
+                                }
+                            }
+                            // memmove-like scroll to move in place
+                            else if (rows > 0) {
+                                for (r in top until bot - rows) {
+                                    for (c in left until right) {
+                                        currentGrid[r][c] = currentGrid[r + rows][c]
+                                    }
+                                }
+                            } else if (rows < 0) {
+                                for (r in bot - 1 downTo top - rows) {
+                                    for (c in left until right) {
+                                        currentGrid[r][c] = currentGrid[r + rows][c]
                                     }
                                 }
                             }
                         }
-
-                        else -> {}
                     }
+
+                    else -> {}
                 }
             }
         }
@@ -175,7 +173,7 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                 val next = inputQueue.tryReceive().getOrNull() ?: break
                 batch.append(next)
             }
-            nvim.sendNotification("nvim_input", listOf(batch.toString()))
+            nvim.notify("nvim_input", listOf(batch.toString()))
         }
     }
 
