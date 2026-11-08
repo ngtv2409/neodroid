@@ -132,6 +132,10 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
         call("nvim_ui_attach", listOf(width, height, options))
     }
 
+    suspend fun ui_try_resize(width: Int, height: Int) {
+        call("nvim_ui_try_resize", listOf(width, height))
+    }
+
     fun setRequestHandler(handler: RpcRequestHandler) {
         requestHandler = handler
     }

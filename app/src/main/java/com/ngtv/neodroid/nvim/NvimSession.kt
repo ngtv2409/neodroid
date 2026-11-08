@@ -182,7 +182,24 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
         inputQueue.trySend(keys)
     }
 
+    private var currentWidth = 0
+    private var currentHeight = 0
+
+    suspend fun resize(width: Int, height: Int) {
+        val safeWidth = width.coerceAtLeast(1)
+        val safeHeight = height.coerceAtLeast(1)
+
+        if (safeWidth == currentWidth && safeHeight == currentHeight) return
+
+        currentWidth = safeWidth
+        currentHeight = safeHeight
+        nvim.ui_try_resize(safeWidth, safeHeight)
+    }
+
     companion object {
+        private const val DEFAULT_WIDTH = 80
+        private const val DEFAULT_HEIGHT = 24
+
         suspend fun create(nvim: NeovimClient): NvimSession {
             val session = NvimSession(nvim)
 
@@ -191,7 +208,9 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                 "ext_linegrid" to true,
             )
 
-            nvim.ui_attach(120, 40, attachOpts)
+            session.currentWidth = DEFAULT_WIDTH
+            session.currentHeight = DEFAULT_HEIGHT
+            nvim.ui_attach(DEFAULT_WIDTH, DEFAULT_HEIGHT, attachOpts)
 
             return session
         }

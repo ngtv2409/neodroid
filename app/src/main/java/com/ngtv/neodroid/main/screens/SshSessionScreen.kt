@@ -3,25 +3,22 @@ package com.ngtv.neodroid.main.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -93,6 +90,7 @@ import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
@@ -102,6 +100,8 @@ import net.schmizz.sshj.transport.TransportException
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 import kotlin.collections.setValue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun SshSessionScreen(session: WorkspaceSession) {
@@ -128,6 +128,7 @@ fun SshSessionScreen(session: WorkspaceSession) {
     }
 
     Scaffold(
+        modifier = Modifier.imePadding(),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         },
@@ -268,9 +269,15 @@ fun SshSessionScreen(session: WorkspaceSession) {
                             } else {
                                 val state by tool.nvimSession.state
                                     .collectAsStateWithLifecycle()
-                                NvimStateRender(state) { input ->
-                                    tool.nvimSession.sendInput(input)
-                                }
+                                NvimStateRender(
+                                    state = state,
+                                    onInput = { input ->
+                                        tool.nvimSession.sendInput(input)
+                                    },
+                                    onResize = { width, height ->
+                                        tool.nvimSession.resize(width, height)
+                                    },
+                                )
                             }
                         }
                     }
@@ -317,9 +324,11 @@ fun SshSessionScreen(session: WorkspaceSession) {
 }
 
 @Composable
-fun NvimStateRender(state: NvimState, onInput: (String) -> Unit) {
-    val grid = state.grid
-
+fun NvimStateRender(
+    state: NvimState,
+    onInput: (String) -> Unit,
+    onResize: suspend (width: Int, height: Int) -> Unit,
+) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
@@ -355,36 +364,40 @@ fun NvimStateRender(state: NvimState, onInput: (String) -> Unit) {
     }
 
     val defaultStyle = state.defaultColors
+    val grid = state.grid
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(defaultStyle.background),
+            .background(defaultStyle.background)
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    focusRequester.requestFocus()
+                    keyboardController?.show()
+                }
+            },
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .horizontalScroll(rememberScrollState())
-                .verticalScroll(rememberScrollState())
-                .pointerInput(Unit) {
-                    detectTapGestures {
-                        focusRequester.requestFocus()
-                        keyboardController?.show()
-                    }
-                },
-        ) {
-            if (grid == null) {
+        val columns = (maxWidth / cellWidthDp).toInt().coerceAtLeast(1)
+        val rows = (maxHeight / cellHeightDp).toInt().coerceAtLeast(1)
+
+        LaunchedEffect(columns, rows) {
+            // Debounce while the IME is animating to avoid resize churn.
+            delay(RESIZE_DEBOUNCE_MS)
+            onResize(columns, rows)
+        }
+
+        if (grid == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text("Waiting for Neovim UI...")
-                return@Box
             }
-
-            val columns = grid.maxOfOrNull { it.size } ?: 0
-            val rows = grid.size
-
+        } else {
             Canvas(
                 modifier = Modifier
-                    .width(cellWidthDp * columns.coerceAtLeast(1))
-                    .height(cellHeightDp * rows.coerceAtLeast(1)),
+                    .width(cellWidthDp * columns)
+                    .height(cellHeightDp * rows),
             ) {
                 val runs = state.buildRuns()
 
@@ -502,6 +515,7 @@ private fun NvimInputCapture(focusRequester: FocusRequester, onInput: (String) -
 
 private const val INPUT_SENTINEL = "\u200B"
 private const val MAX_INPUT_SCRATCH = 4096
+private val RESIZE_DEBOUNCE_MS: Duration = 100.milliseconds
 
 // nvim key notations
 private fun encodeNvimInput(oldText: String, newText: String): String {
