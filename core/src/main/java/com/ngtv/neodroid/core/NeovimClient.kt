@@ -247,9 +247,7 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
     private suspend fun enqueueNotification(message: RpcNotification) {
         if (message.method == "redraw") {
             val params = asNestedList(message.params) ?: return
-            for (event in dispatchRedrawEvent(params)) {
-                inbound.send(NvimNotification.Redraw(event))
-            }
+            dispatchRedrawEvent(inbound, params)
         } else {
             inbound.send(NvimNotification.Unclassified(message))
         }

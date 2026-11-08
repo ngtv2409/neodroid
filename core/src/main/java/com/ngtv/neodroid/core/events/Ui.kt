@@ -2,6 +2,10 @@
 
 package com.ngtv.neodroid.core.events
 
+import com.ngtv.neodroid.core.NvimNotification
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.SendChannel
+
 // https://neovim.io/doc/user/api-ui-events/#_global-events
 // only implement the significant subsets
 sealed interface NvimUiEvent {
@@ -112,9 +116,10 @@ data class HighlightAttr(
 // sent by grid_line
 data class TextCell(val text: String, val hl_id: Long?, val repeat: Long?)
 
-internal fun dispatchRedrawEvent(events: List<List<Any?>>): List<NvimUiEvent> {
-    val result = mutableListOf<NvimUiEvent>()
-
+internal suspend fun dispatchRedrawEvent(
+    inbound: SendChannel<NvimNotification>,
+    events: List<List<Any?>>,
+) {
     fun highlightAttr(attrs: Map<*, *>): HighlightAttr = HighlightAttr(
         foreground = attrs["foreground"] as? Long,
         background = attrs["background"] as? Long,
@@ -147,14 +152,18 @@ internal fun dispatchRedrawEvent(events: List<List<Any?>>): List<NvimUiEvent> {
 
             when (method) {
                 "set_title" -> {
-                    result.add(
-                        NvimUiEvent.SetTitle(args[0] as String),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.SetTitle(args[0] as String),
+                        ),
                     )
                 }
 
                 "set_icon" -> {
-                    result.add(
-                        NvimUiEvent.SetIcon(args[0] as String),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.SetIcon(args[0] as String),
+                        ),
                     )
                 }
 
@@ -184,59 +193,71 @@ internal fun dispatchRedrawEvent(events: List<List<Any?>>): List<NvimUiEvent> {
                         )
                     }
 
-                    result.add(
-                        NvimUiEvent.ModeInfoSet(enabled, modes),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.ModeInfoSet(enabled, modes),
+                        ),
                     )
                 }
 
                 "option_set" -> {
-                    result.add(
-                        NvimUiEvent.OptionSet(
-                            args[0] as String,
-                            args[1],
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.OptionSet(
+                                args[0] as String,
+                                args[1],
+                            ),
                         ),
                     )
                 }
 
                 "chdir" -> {
-                    result.add(
-                        NvimUiEvent.Chdir(args[0] as String),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.Chdir(args[0] as String),
+                        ),
                     )
                 }
 
                 "mode_change" -> {
-                    result.add(
-                        NvimUiEvent.ModeChange(args[0] as String, args[1] as Long),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.ModeChange(args[0] as String, args[1] as Long),
+                        ),
                     )
                 }
 
                 "busy_start" ->
-                    result.add(NvimUiEvent.BusyStart)
+                    inbound.send(NvimNotification.Redraw(NvimUiEvent.BusyStart))
 
                 "busy_stop" ->
-                    result.add(NvimUiEvent.BusyStop)
+                    inbound.send(NvimNotification.Redraw(NvimUiEvent.BusyStop))
 
                 "flush" ->
-                    result.add(NvimUiEvent.Flush)
+                    inbound.send(NvimNotification.Redraw(NvimUiEvent.Flush))
 
                 "grid_resize" -> {
-                    result.add(
-                        NvimUiEvent.GridResize(
-                            args[0] as Long,
-                            args[1] as Long,
-                            args[2] as Long,
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.GridResize(
+                                args[0] as Long,
+                                args[1] as Long,
+                                args[2] as Long,
+                            ),
                         ),
                     )
                 }
 
                 "default_colors_set" -> {
-                    result.add(
-                        NvimUiEvent.DefaultColorSet(
-                            args[0] as Long,
-                            args[1] as Long,
-                            args[2] as Long,
-                            args[3] as Long,
-                            args[4] as Long,
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.DefaultColorSet(
+                                args[0] as Long,
+                                args[1] as Long,
+                                args[2] as Long,
+                                args[3] as Long,
+                                args[4] as Long,
+                            ),
                         ),
                     )
                 }
@@ -246,21 +267,25 @@ internal fun dispatchRedrawEvent(events: List<List<Any?>>): List<NvimUiEvent> {
                     val rgbAttrs = args[1] as Map<*, *>
                     val ctermAttrs = args[2] as Map<*, *>
 
-                    result.add(
-                        NvimUiEvent.HlAttrDefine(
-                            id = id,
-                            rgb_attr = highlightAttr(rgbAttrs),
-                            cterm_attr = highlightAttr(ctermAttrs),
-                            info = args[3] as List<Any?>,
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.HlAttrDefine(
+                                id = id,
+                                rgb_attr = highlightAttr(rgbAttrs),
+                                cterm_attr = highlightAttr(ctermAttrs),
+                                info = args[3] as List<Any?>,
+                            ),
                         ),
                     )
                 }
 
                 "hl_group_set" -> {
-                    result.add(
-                        NvimUiEvent.HlGroupSet(
-                            args[0] as String,
-                            args[1] as Long,
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.HlGroupSet(
+                                args[0] as String,
+                                args[1] as Long,
+                            ),
                         ),
                     )
                 }
@@ -276,61 +301,71 @@ internal fun dispatchRedrawEvent(events: List<List<Any?>>): List<NvimUiEvent> {
                         )
                     }
 
-                    result.add(
-                        NvimUiEvent.GridLine(
-                            grid = args[0] as Long,
-                            row = args[1] as Long,
-                            col_start = args[2] as Long,
-                            cells = cells,
-                            wrap = args.getOrNull(4) as? Boolean ?: false,
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.GridLine(
+                                grid = args[0] as Long,
+                                row = args[1] as Long,
+                                col_start = args[2] as Long,
+                                cells = cells,
+                                wrap = args.getOrNull(4) as? Boolean ?: false,
+                            ),
                         ),
                     )
                 }
 
                 "grid_clear" -> {
-                    result.add(
-                        NvimUiEvent.GridClear(args[0] as Long),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.GridClear(args[0] as Long),
+                        ),
                     )
                 }
 
                 "grid_destroy" -> {
-                    result.add(
-                        NvimUiEvent.GridDestroy(args[0] as Long),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.GridDestroy(args[0] as Long),
+                        ),
                     )
                 }
 
                 "grid_cursor_goto" -> {
-                    result.add(
-                        NvimUiEvent.GridCursorGoto(
-                            args[0] as Long,
-                            args[1] as Long,
-                            args[2] as Long,
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.GridCursorGoto(
+                                args[0] as Long,
+                                args[1] as Long,
+                                args[2] as Long,
+                            ),
                         ),
                     )
                 }
 
                 "grid_scroll" -> {
-                    result.add(
-                        NvimUiEvent.GridScroll(
-                            args[0] as Long,
-                            args[1] as Long,
-                            args[2] as Long,
-                            args[3] as Long,
-                            args[4] as Long,
-                            args[5] as Long,
-                            args[6] as Long,
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.GridScroll(
+                                args[0] as Long,
+                                args[1] as Long,
+                                args[2] as Long,
+                                args[3] as Long,
+                                args[4] as Long,
+                                args[5] as Long,
+                                args[6] as Long,
+                            ),
                         ),
                     )
                 }
 
                 else -> {
-                    result.add(
-                        NvimUiEvent.Unclassified(method, args),
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.Unclassified(method, args),
+                        ),
                     )
                 }
             }
         }
     }
-
-    return result
 }
