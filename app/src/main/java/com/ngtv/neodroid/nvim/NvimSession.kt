@@ -6,6 +6,7 @@ import androidx.compose.ui.text.SpanStyle
 import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimNotification
 import com.ngtv.neodroid.core.events.NvimUiEvent
+import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -22,7 +23,17 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
     private val readerJob: Job = nvim.scope.launch {
         for (notification in nvim.inbound) {
             if (notification is NvimNotification.Redraw) {
-                nvimActor.apply(notification.event)
+                val event = notification.event
+                if (event is NvimUiEvent.Flush) {
+                    NvimPerf.measure("actor.flush") {
+                        nvimActor.apply(event)
+                    }
+                    NvimPerf.markFlush()
+                } else {
+                    NvimPerf.measure("actor.apply") {
+                        nvimActor.apply(event)
+                    }
+                }
             }
         }
     }
@@ -42,7 +53,9 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
 
     fun sendInput(keys: String) {
         if (keys.isEmpty()) return
-        inputQueue.trySend(keys)
+        if (inputQueue.trySend(keys).isSuccess) {
+            NvimPerf.markInput()
+        }
     }
 
     private var currentWidth = 0

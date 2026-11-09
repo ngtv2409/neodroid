@@ -85,6 +85,7 @@ import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.nvim.NvimFrame
 import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.nvim.TextSpan
+import com.ngtv.neodroid.perf.NvimPerf
 import com.ngtv.neodroid.sharedComponents.PasswordInput
 import com.ngtv.neodroid.sharedComponents.ValidatedTextField
 import com.ngtv.neodroid.sshUtils.NvimTool
@@ -370,7 +371,9 @@ fun NvimFrameRender(
         NvimFrameRenderCache()
     }
     val renderedRows = remember(frame, renderCache, textMeasurer, baseTextStyle) {
-        renderCache.render(frame, textMeasurer, baseTextStyle)
+        NvimPerf.measure("render.compose") {
+            renderCache.render(frame, textMeasurer, baseTextStyle)
+        }
     }
 
     BoxWithConstraints(
@@ -406,45 +409,47 @@ fun NvimFrameRender(
                     .width(cellWidthDp * columns)
                     .height(cellHeightDp * visibleRows),
             ) {
-                renderedRows.forEachIndexed { rowIndex, row ->
-                    row.forEach { span ->
-                        if (span.background != Color.Unspecified) {
-                            drawRect(
-                                color = span.background,
+                NvimPerf.measure("render.draw") {
+                    renderedRows.forEachIndexed { rowIndex, row ->
+                        row.forEach { span ->
+                            if (span.background != Color.Unspecified) {
+                                drawRect(
+                                    color = span.background,
+                                    topLeft = Offset(
+                                        x = span.startCol * cellWidthPx,
+                                        y = rowIndex * cellHeightPx,
+                                    ),
+                                    size = androidx.compose.ui.geometry.Size(
+                                        width = span.columns * cellWidthPx,
+                                        height = cellHeightPx,
+                                    ),
+                                )
+                            }
+
+                            drawText(
+                                textLayoutResult = span.layout,
                                 topLeft = Offset(
                                     x = span.startCol * cellWidthPx,
                                     y = rowIndex * cellHeightPx,
                                 ),
-                                size = androidx.compose.ui.geometry.Size(
-                                    width = span.columns * cellWidthPx,
-                                    height = cellHeightPx,
-                                ),
                             )
                         }
-
-                        drawText(
-                            textLayoutResult = span.layout,
-                            topLeft = Offset(
-                                x = span.startCol * cellWidthPx,
-                                y = rowIndex * cellHeightPx,
-                            ),
-                        )
                     }
-                }
 
-                // TODO: handle cursor style properly
-                // also we'll need to invert text under cursor (complicated)
-                drawRect(
-                    color = Color.Black,
-                    topLeft = Offset(
-                        x = frame.cursor.col * cellWidthPx,
-                        y = frame.cursor.row * cellHeightPx,
-                    ),
-                    size = androidx.compose.ui.geometry.Size(
-                        width = cellWidthPx / 3,
-                        height = cellHeightPx,
-                    ),
-                )
+                    // TODO: handle cursor style properly
+                    // also we'll need to invert text under cursor (complicated)
+                    drawRect(
+                        color = Color.Black,
+                        topLeft = Offset(
+                            x = frame.cursor.col * cellWidthPx,
+                            y = frame.cursor.row * cellHeightPx,
+                        ),
+                        size = androidx.compose.ui.geometry.Size(
+                            width = cellWidthPx / 3,
+                            height = cellHeightPx,
+                        ),
+                    )
+                }
             }
         }
 
@@ -489,13 +494,15 @@ private class NvimFrameRenderCache {
 
                 val cached = layouts[span]
                 val layout = if (cached == null || cached.style != style) {
-                    textMeasurer.measure(
-                        text = AnnotatedString(span.text),
-                        style = baseStyle.merge(style.copy(background = Color.Unspecified)),
-                        softWrap = false,
-                        maxLines = 1,
-                    ).also { measured ->
-                        layouts[span] = CachedLayout(style, measured)
+                    NvimPerf.measure("render.measure") {
+                        textMeasurer.measure(
+                            text = AnnotatedString(span.text),
+                            style = baseStyle.merge(style.copy(background = Color.Unspecified)),
+                            softWrap = false,
+                            maxLines = 1,
+                        ).also { measured ->
+                            layouts[span] = CachedLayout(style, measured)
+                        }
                     }
                 } else {
                     cached.layout
