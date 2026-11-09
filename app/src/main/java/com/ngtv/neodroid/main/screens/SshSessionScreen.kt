@@ -61,6 +61,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -78,11 +82,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.SSHHostEntity
+import com.ngtv.neodroid.nvim.NvimFrame
 import com.ngtv.neodroid.nvim.NvimSession
-import com.ngtv.neodroid.nvim.NvimState
-import com.ngtv.neodroid.nvim.buildRuns
-import com.ngtv.neodroid.nvim.hlIdToStyle
-import com.ngtv.neodroid.nvim.nvimRgbColor
+import com.ngtv.neodroid.nvim.TextSpan
 import com.ngtv.neodroid.sharedComponents.PasswordInput
 import com.ngtv.neodroid.sharedComponents.ValidatedTextField
 import com.ngtv.neodroid.sshUtils.NvimTool
@@ -267,10 +269,10 @@ fun SshSessionScreen(session: WorkspaceSession) {
                             if (tool.connectionFailure != null) {
                                 Text("Error: ${tool.connectionFailure}")
                             } else {
-                                val state by tool.nvimSession.state
+                                val frame by tool.nvimSession.state
                                     .collectAsStateWithLifecycle()
-                                NvimStateRender(
-                                    state = state,
+                                NvimFrameRender(
+                                    frame = frame,
                                     onInput = { input ->
                                         tool.nvimSession.sendInput(input)
                                     },
@@ -324,8 +326,8 @@ fun SshSessionScreen(session: WorkspaceSession) {
 }
 
 @Composable
-fun NvimStateRender(
-    state: NvimState,
+fun NvimFrameRender(
+    frame: NvimFrame,
     onInput: (String) -> Unit,
     onResize: suspend (width: Int, height: Int) -> Unit,
 ) {
@@ -347,7 +349,7 @@ fun NvimStateRender(
 
     val cellMetrics = remember(textMeasurer, baseTextStyle, density) {
         textMeasurer.measure(
-            text = androidx.compose.ui.text.AnnotatedString("M"),
+            text = AnnotatedString("M"),
             style = baseTextStyle,
         ).size
     }
@@ -363,8 +365,13 @@ fun NvimStateRender(
         cellMetrics.height.toDp()
     }
 
-    val defaultStyle = state.defaultColors
-    val grid = state.grid
+    val defaultStyle = frame.defaultColors
+    val renderCache = remember(textMeasurer, baseTextStyle, density) {
+        NvimFrameRenderCache()
+    }
+    val renderedRows = remember(frame, renderCache, textMeasurer, baseTextStyle) {
+        renderCache.render(frame, textMeasurer, baseTextStyle)
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -378,15 +385,15 @@ fun NvimStateRender(
             },
     ) {
         val columns = (maxWidth / cellWidthDp).toInt().coerceAtLeast(1)
-        val rows = (maxHeight / cellHeightDp).toInt().coerceAtLeast(1)
+        val visibleRows = (maxHeight / cellHeightDp).toInt().coerceAtLeast(1)
 
-        LaunchedEffect(columns, rows) {
+        LaunchedEffect(columns, visibleRows) {
             // Debounce while the IME is animating to avoid resize churn.
             delay(RESIZE_DEBOUNCE_MS)
-            onResize(columns, rows)
+            onResize(columns, visibleRows)
         }
 
-        if (grid == null) {
+        if (frame.rows.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -397,44 +404,41 @@ fun NvimStateRender(
             Canvas(
                 modifier = Modifier
                     .width(cellWidthDp * columns)
-                    .height(cellHeightDp * rows),
+                    .height(cellHeightDp * visibleRows),
             ) {
-                val runs = state.buildRuns()
+                renderedRows.forEachIndexed { rowIndex, row ->
+                    row.forEach { span ->
+                        if (span.background != Color.Unspecified) {
+                            drawRect(
+                                color = span.background,
+                                topLeft = Offset(
+                                    x = span.startCol * cellWidthPx,
+                                    y = rowIndex * cellHeightPx,
+                                ),
+                                size = androidx.compose.ui.geometry.Size(
+                                    width = span.columns * cellWidthPx,
+                                    height = cellHeightPx,
+                                ),
+                            )
+                        }
 
-                runs.second.forEach { run ->
-                    drawRect(
-                        color = run.color,
-                        topLeft = Offset(
-                            x = run.startColumn * cellWidthPx,
-                            y = run.row * cellHeightPx,
-                        ),
-                        size = androidx.compose.ui.geometry.Size(
-                            width = run.length * cellWidthPx,
-                            height = cellHeightPx,
-                        ),
-                    )
+                        drawText(
+                            textLayoutResult = span.layout,
+                            topLeft = Offset(
+                                x = span.startCol * cellWidthPx,
+                                y = rowIndex * cellHeightPx,
+                            ),
+                        )
+                    }
                 }
 
-                runs.first.forEach { run ->
-                    drawText(
-                        textMeasurer = textMeasurer,
-                        text = run.text,
-                        topLeft = Offset(
-                            run.startColumn * cellWidthPx,
-                            run.row * cellHeightPx,
-                        ),
-                        style = baseTextStyle.merge(run.style),
-                        softWrap = false,
-                        maxLines = 1,
-                    )
-                }
                 // TODO: handle cursor style properly
                 // also we'll need to invert text under cursor (complicated)
                 drawRect(
                     color = Color.Black,
                     topLeft = Offset(
-                        x = state.cursor.col * cellWidthPx,
-                        y = state.cursor.row * cellHeightPx,
+                        x = frame.cursor.col * cellWidthPx,
+                        y = frame.cursor.row * cellHeightPx,
                     ),
                     size = androidx.compose.ui.geometry.Size(
                         width = cellWidthPx / 3,
@@ -448,6 +452,73 @@ fun NvimStateRender(
             focusRequester = focusRequester,
             onInput = onInput,
         )
+    }
+}
+
+private class RenderedSpan(
+    val startCol: Int,
+    val columns: Int,
+    val background: Color,
+    val layout: TextLayoutResult,
+)
+
+private class NvimFrameRenderCache {
+    private class CachedLayout(val style: SpanStyle, val layout: TextLayoutResult)
+
+    private val layouts = HashMap<TextSpan, CachedLayout>()
+
+    fun render(
+        frame: NvimFrame,
+        textMeasurer: TextMeasurer,
+        baseStyle: TextStyle,
+    ): List<List<RenderedSpan>> {
+        val liveSpans = HashSet<TextSpan>()
+        val rows = ArrayList<List<RenderedSpan>>(frame.rows.size)
+
+        frame.rows.forEach { row ->
+            val renderedSpans = ArrayList<RenderedSpan>(row.spans.size)
+
+            row.spans.forEach { span ->
+                liveSpans.add(span)
+
+                val style = if (span.hlId == -1) {
+                    frame.defaultColors
+                } else {
+                    frame.styles[span.hlId] ?: frame.defaultColors
+                }
+
+                val cached = layouts[span]
+                val layout = if (cached == null || cached.style != style) {
+                    textMeasurer.measure(
+                        text = AnnotatedString(span.text),
+                        style = baseStyle.merge(style.copy(background = Color.Unspecified)),
+                        softWrap = false,
+                        maxLines = 1,
+                    ).also { measured ->
+                        layouts[span] = CachedLayout(style, measured)
+                    }
+                } else {
+                    cached.layout
+                }
+
+                renderedSpans.add(
+                    RenderedSpan(
+                        startCol = span.startCol,
+                        columns = span.columns,
+                        background = style.background,
+                        layout = layout,
+                    ),
+                )
+            }
+
+            rows.add(renderedSpans)
+        }
+
+        if (layouts.size > liveSpans.size * 2 + 32) {
+            layouts.keys.retainAll(liveSpans)
+        }
+
+        return rows
     }
 }
 
