@@ -1,5 +1,6 @@
 package com.ngtv.neodroid.nvim
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -17,15 +18,12 @@ data class CursorState(val row: Int = 0, val col: Int = 0)
 /**
  * A collection of text with the same hl group
  */
-class TextSpan(
-    val startCol: Int,
-    val columns: Int,
-    val text: String,
-    val hlId: Int,
-    val revision: Long,
-) {
+@Immutable
+class TextSpan(val startCol: Int, val columns: Int, val text: String, val hlId: Int) {
     val endCol: Int
         get() = startCol + columns
+
+    val layoutHash: Int = 31 * text.hashCode() + hlId
 
     /**
      * Extracts columns [start, end) from this span.
@@ -46,7 +44,6 @@ class TextSpan(
             columns = to - from,
             text = text.substring(fromOffset, toOffset),
             hlId = hlId,
-            revision = revision,
         )
     }
 
@@ -56,12 +53,12 @@ class TextSpan(
             columns = columns,
             text = " ".repeat(columns),
             hlId = -1,
-            revision = 0,
         )
     }
 }
 
-class TextRow(val revision: Long, val spans: List<TextSpan>) {
+@Immutable
+class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd: Int = -1) {
     val columns: Int
         get() = spans.sumOf { it.columns }
 
@@ -87,12 +84,17 @@ class TextRow(val revision: Long, val spans: List<TextSpan>) {
         }
 
         result.addAll(replacement)
-        return TextRow(revision + 1, normalize(result, width))
+        return TextRow(
+            spans = normalize(result, width),
+            dirtyStart = start,
+            dirtyEnd = end,
+        )
     }
 
     fun cleared(): TextRow = TextRow(
-        revision + 1,
-        if (columns == 0) emptyList() else listOf(TextSpan.blank(0, columns)),
+        spans = if (columns == 0) emptyList() else listOf(TextSpan.blank(0, columns)),
+        dirtyStart = 0,
+        dirtyEnd = columns,
     )
 
     fun extract(startCol: Int, endCol: Int, targetStart: Int): List<TextSpan> {
@@ -104,15 +106,25 @@ class TextRow(val revision: Long, val spans: List<TextSpan>) {
             val overlapStart = maxOf(from, span.startCol)
             val overlapEnd = minOf(to, span.endCol)
             if (overlapStart < overlapEnd) {
-                span.slice(overlapStart, overlapEnd)?.let { slice ->
+                val slice = if (overlapStart == span.startCol && overlapEnd == span.endCol) {
+                    span
+                } else {
+                    span.slice(overlapStart, overlapEnd)
+                }
+
+                if (slice != null) {
+                    val target = targetStart + (overlapStart - from)
                     result.add(
-                        TextSpan(
-                            startCol = targetStart + (overlapStart - from),
-                            columns = slice.columns,
-                            text = slice.text,
-                            hlId = slice.hlId,
-                            revision = slice.revision,
-                        ),
+                        if (slice.startCol == target) {
+                            slice
+                        } else {
+                            TextSpan(
+                                startCol = target,
+                                columns = slice.columns,
+                                text = slice.text,
+                                hlId = slice.hlId,
+                            )
+                        },
                     )
                 }
             }
@@ -125,12 +137,13 @@ class TextRow(val revision: Long, val spans: List<TextSpan>) {
         fun blank(width: Int): TextRow {
             val columns = width.coerceAtLeast(0)
             return TextRow(
-                revision = 0,
                 spans = if (columns == 0) {
                     emptyList()
                 } else {
                     listOf(TextSpan.blank(0, columns))
                 },
+                dirtyStart = 0,
+                dirtyEnd = columns,
             )
         }
 
@@ -161,7 +174,6 @@ class TextRow(val revision: Long, val spans: List<TextSpan>) {
                         columns = last.columns + current.columns,
                         text = last.text + current.text,
                         hlId = last.hlId,
-                        revision = maxOf(last.revision, current.revision),
                     )
                     current = result.last()
                 } else {
@@ -183,6 +195,7 @@ class TextRow(val revision: Long, val spans: List<TextSpan>) {
 /**
  * An immutable container for render state
  */
+@Immutable
 class NvimFrame(
     val generation: Long = 0,
     val rows: List<TextRow> = emptyList(),
@@ -213,15 +226,9 @@ class NvimStateActor {
     private var styles: Map<Int, SpanStyle> = emptyMap()
     private val rows: ArrayList<TextRow> = ArrayList()
     private var cursor: CursorState = CursorState()
-    private var spanRevision = 0L
 
     private val _state = MutableStateFlow(NvimFrame())
     val state = _state.asStateFlow()
-
-    internal fun styleFor(hlId: Int): SpanStyle {
-        if (hlId == -1) return defaultColors
-        return styles[hlId] ?: defaultColors
-    }
 
     private fun publish(): NvimFrame {
         generation += 1
@@ -322,7 +329,6 @@ class NvimStateActor {
                     columns = repeat,
                     text = cell.text.repeat(repeat),
                     hlId = hlId,
-                    revision = ++spanRevision,
                 ),
             )
             col += repeat
@@ -402,8 +408,6 @@ class NvimStateActor {
         }
     }
 }
-
-fun NvimStateActor.hlIdToStyle(hlId: Int): SpanStyle = styleFor(hlId)
 
 fun nvimRgbColor(rgb: Long): Color = Color(rgb.toInt() or 0xFF000000.toInt())
 
