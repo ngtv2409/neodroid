@@ -20,6 +20,16 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    buildTypes {
+        // Optimized build identical to release, but signed with the debug key so it can
+        // be installed locally without a release keystore.
+        create("releaseDebug") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
 }
 
 kotlin {
