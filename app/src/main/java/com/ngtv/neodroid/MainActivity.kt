@@ -16,7 +16,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -32,6 +31,7 @@ import com.ngtv.neodroid.database.SSHHostViewModelFactory
 import com.ngtv.neodroid.main.navigation.MainNavigation
 import com.ngtv.neodroid.service.SshManagerService
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import com.ngtv.neodroid.ui.theme.NeodroidTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -108,17 +108,17 @@ class MainActivity : ComponentActivity() {
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         setContent {
-            val sessionManager = sshService?.sessionManager
-            if (isBound && sessionManager != null) {
-                MaterialTheme {
+            NeodroidTheme {
+                val sessionManager = sshService?.sessionManager
+                if (isBound && sessionManager != null) {
                     MainNavigation(sshHostViewModel, sessionManager)
-                }
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
             }
         }
