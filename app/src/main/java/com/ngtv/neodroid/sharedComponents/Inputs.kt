@@ -30,6 +30,7 @@ fun ValidatedTextField(
     maxLength: Int? = null,
     singleLine: Boolean = true,
     enabled: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 ) {
     var hasBeenFocused by rememberSaveable { mutableStateOf(false) }
     var touched by rememberSaveable { mutableStateOf(false) }
@@ -57,6 +58,7 @@ fun ValidatedTextField(
         singleLine = singleLine,
         enabled = enabled,
         isError = showError,
+        keyboardOptions = keyboardOptions,
         supportingText = {
             when {
                 showError -> {

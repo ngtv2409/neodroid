@@ -1,7 +1,6 @@
 package com.ngtv.neodroid.main.navigation
 
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +43,7 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
                 viewModel,
                 onOpenHostAdd = { navController.navigate("hosts/new") },
                 onOpenDetail = { id -> navController.navigate("hosts/details/$id") },
+                onConnectHost = { id -> navController.navigate("workspace/$id") },
                 hasRunningSession = sessionManager.hasRunningSession(),
                 onBackToSession = {
                     navController.navigate("workspace/session")
@@ -62,9 +62,14 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
             if (hostId == null) {
                 navController.popBackStack()
             } else {
-                DetailHostScreen(viewModel, hostId, onConnect = {
-                    navController.navigate("workspace/$hostId")
-                })
+                DetailHostScreen(
+                    viewModel = viewModel,
+                    hostId = hostId,
+                    onBack = { navController.popBackStack() },
+                    onConnect = {
+                        navController.navigate("workspace/$hostId")
+                    },
+                )
             }
         }
 
