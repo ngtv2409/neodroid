@@ -81,6 +81,7 @@ fun PasswordInput(
     password: String,
     onPasswordChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     var passwordVisible by remember {
         mutableStateOf(false)
@@ -92,6 +93,7 @@ fun PasswordInput(
         modifier = modifier.fillMaxWidth(),
         label = { Text("Password") },
         singleLine = true,
+        enabled = enabled,
         visualTransformation = if (passwordVisible) {
             VisualTransformation.None
         } else {
@@ -103,11 +105,15 @@ fun PasswordInput(
         ),
         trailingIcon = {
             IconButton(
+                enabled = enabled,
                 onClick = {
                     passwordVisible = !passwordVisible
                 },
             ) {
-                Text("H")
+                Text(
+                    text = if (passwordVisible) "Hide" else "Show",
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         },
     )

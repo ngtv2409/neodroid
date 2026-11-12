@@ -8,18 +8,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.main.screens.AddHostScreen
+import com.ngtv.neodroid.main.screens.ConnectionsScreen
 import com.ngtv.neodroid.main.screens.DetailHostScreen
 import com.ngtv.neodroid.main.screens.HomeScreen
 import com.ngtv.neodroid.main.screens.SshSessionScreen
 import com.ngtv.neodroid.main.screens.WorkspacePrepareClient
-import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import kotlinx.coroutines.CancellationException
@@ -35,13 +33,25 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
     ) {
         composable("home") {
             HomeScreen(
-                viewModel,
+                viewModel = viewModel,
+                sessionManager = sessionManager,
                 onOpenHostAdd = { navController.navigate("hosts/new") },
                 onOpenDetail = { id -> navController.navigate("hosts/details/$id") },
                 onConnectHost = { id -> navController.navigate("workspace/$id") },
-                hasRunningSession = sessionManager.hasRunningSession(),
-                onBackToSession = {
-                    navController.navigate("workspace/session")
+                onOpenConnection = { connectionId ->
+                    navController.navigate("workspace/session/$connectionId")
+                },
+                onShowAllConnections = {
+                    navController.navigate("connections")
+                },
+            )
+        }
+        composable("connections") {
+            ConnectionsScreen(
+                sessionManager = sessionManager,
+                onBack = { navController.popBackStack() },
+                onOpenConnection = { connectionId ->
+                    navController.navigate("workspace/session/$connectionId")
                 },
             )
         }
@@ -77,47 +87,70 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
                     hostId,
                 ).collectAsStateWithLifecycle(initialValue = null)
                 val host = hostHandler ?: return@composable
-                WorkspacePrepareClient(host, sessionManager) {
-                    navController.navigate("workspace/session") {
-                        popUpTo("home") {
-                            inclusive = false
+                WorkspacePrepareClient(
+                    host = host,
+                    sessionManager = sessionManager,
+                    onBack = { navController.popBackStack() },
+                    onConnect = { connectionId ->
+                        navController.navigate("workspace/session/$connectionId") {
+                            popUpTo("home") {
+                                inclusive = false
+                            }
                         }
-                    }
-                }
+                    },
+                )
             }
         }
-        composable("workspace/session") {
-            var session by remember {
-                mutableStateOf<WorkspaceSession?>(null)
+        composable("workspace/session/{connectionId}") { backStackEntry ->
+            val connectionId = backStackEntry.arguments?.getString("connectionId")
+            if (connectionId == null) {
+                navController.popBackStack()
+            } else {
+                WorkspaceSessionDestination(
+                    sessionManager = sessionManager,
+                    connectionId = connectionId,
+                    onMissing = { navController.popBackStack() },
+                )
             }
+        }
+    }
+}
 
-            var sessionError by remember {
-                mutableStateOf(false)
+@Composable
+private fun WorkspaceSessionDestination(
+    sessionManager: SshSessionManager,
+    connectionId: String,
+    onMissing: () -> Unit,
+) {
+    var session by remember(connectionId) {
+        mutableStateOf<WorkspaceSession?>(null)
+    }
+
+    var sessionError by remember(connectionId) {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(sessionManager, connectionId) {
+        try {
+            session = sessionManager.getSession(connectionId)
+            if (session == null) {
+                sessionError = true
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            sessionError = true
+        }
+    }
 
-            LaunchedEffect(sessionManager) {
-                try {
-                    session = sessionManager.getSession()
-                    if (session == null) {
-                        sessionError = true
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    sessionError = true
-                }
-            }
+    when {
+        session != null -> {
+            SshSessionScreen(session!!)
+        }
 
-            when {
-                session != null -> {
-                    SshSessionScreen(session!!)
-                }
-
-                sessionError -> {
-                    LaunchedEffect(Unit) {
-                        navController.popBackStack()
-                    }
-                }
+        sessionError -> {
+            LaunchedEffect(Unit) {
+                onMissing()
             }
         }
     }
