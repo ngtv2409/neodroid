@@ -15,10 +15,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun FakeIcon(
-    modifier: Modifier = Modifier,
-    contentDescription: String? = null,
-) {
+fun FakeIcon(modifier: Modifier = Modifier, contentDescription: String? = null) {
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center,
