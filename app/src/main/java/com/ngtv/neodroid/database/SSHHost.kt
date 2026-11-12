@@ -26,6 +26,7 @@ data class SSHHostEntity(
     val port: Int,
     val server_signature: String?,
     val username: String,
+    val last_connected_at: Long? = null,
     /* ... TODO: add necessary fields */
 )
 
@@ -34,6 +35,12 @@ interface SSHHostDao {
 
     @Query("SELECT * FROM ssh_hosts ORDER BY id DESC")
     fun getAll(): Flow<List<SSHHostEntity>>
+
+    @Query(
+        "SELECT * FROM ssh_hosts " +
+            "ORDER BY last_connected_at DESC, id DESC",
+    )
+    fun getRecent(): Flow<List<SSHHostEntity>>
 
     @Query("SELECT * FROM ssh_hosts WHERE id = :id LIMIT 1")
     fun getById(id: Int): Flow<SSHHostEntity?>
@@ -46,10 +53,18 @@ interface SSHHostDao {
 
     @Delete
     suspend fun delete(host: SSHHostEntity)
+
+    @Query("UPDATE ssh_hosts SET last_connected_at = :timestamp WHERE id = :id")
+    suspend fun markConnected(id: Int, timestamp: Long)
+
+    @Query("UPDATE ssh_hosts SET server_signature = :fingerprint WHERE id = :id")
+    suspend fun updateHostKey(id: Int, fingerprint: String)
 }
 
 class SSHHostRepository(private val dao: SSHHostDao) {
     fun getAllHosts(): Flow<List<SSHHostEntity>> = dao.getAll()
+
+    fun getRecentHosts(): Flow<List<SSHHostEntity>> = dao.getRecent()
 
     fun getById(id: Int): Flow<SSHHostEntity?> = dao.getById(id)
 
@@ -78,12 +93,28 @@ class SSHHostRepository(private val dao: SSHHostDao) {
     suspend fun updateHost(host: SSHHostEntity) {
         dao.update(host)
     }
+
+    suspend fun markConnected(id: Int, timestamp: Long = System.currentTimeMillis()) {
+        dao.markConnected(id, timestamp)
+    }
+
+    suspend fun updateHostKey(id: Int, fingerprint: String) {
+        dao.updateHostKey(id, fingerprint)
+    }
 }
 
 class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() {
 
     val hosts: StateFlow<List<SSHHostEntity>> =
         repository.getAllHosts().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
+
+    /** Hosts ordered by most recent successful connection, then most recently added. */
+    val recentHosts: StateFlow<List<SSHHostEntity>> =
+        repository.getRecentHosts().stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList(),
@@ -146,6 +177,18 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
 
         viewModelScope.launch {
             repository.updateHost(host)
+        }
+    }
+
+    fun markHostConnected(hostId: Int, timestamp: Long = System.currentTimeMillis()) {
+        viewModelScope.launch {
+            repository.markConnected(hostId, timestamp)
+        }
+    }
+
+    fun updateHostKey(hostId: Int, fingerprint: String) {
+        viewModelScope.launch {
+            repository.updateHostKey(hostId, fingerprint)
         }
     }
 }

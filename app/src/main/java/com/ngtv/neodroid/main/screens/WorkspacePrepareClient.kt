@@ -23,15 +23,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.sharedComponents.PasswordInput
+import com.ngtv.neodroid.sshUtils.HostKeyMismatchException
+import com.ngtv.neodroid.sshUtils.SshConnectionConfig
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.DisconnectReason
 import net.schmizz.sshj.transport.TransportException
-import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 
 @Composable
@@ -118,38 +118,35 @@ fun WorkspacePrepareClient(
                     connectEnable = false
 
                     coroutineScope.launch {
-                        var client: SSHClient? = null
-                        var connectionTransferred = false
-
                         try {
                             withContext(Dispatchers.IO) {
-                                client = SSHClient()
-
-                                if (host.server_signature == null) {
-                                    // WARN: TODO: Temporary workaround. Should use first time trust when fingerprint is not provided
-                                    client.addHostKeyVerifier(PromiscuousVerifier())
-                                } else {
-                                    client.addHostKeyVerifier(host.server_signature)
+                                val connection =
+                                    sessionManager.connect(
+                                        SshConnectionConfig(
+                                            hostId = host.id,
+                                            serverName = host.server_name,
+                                            hostname = host.hostname,
+                                            port = host.port,
+                                            username = host.username,
+                                            password = password,
+                                            knownHostKeyFingerprint = host.server_signature,
+                                        ),
+                                    )
+                                try {
+                                    sessionManager.openWorkspace(connection.id)
+                                } catch (e: CancellationException) {
+                                    sessionManager.closeConnection(connection.id)
+                                    throw e
+                                } catch (e: Exception) {
+                                    sessionManager.closeConnection(connection.id)
+                                    throw e
                                 }
-
-                                client.connect(host.hostname, host.port)
-                                // disable socket delay since input is sent over this socket
-                                runCatching { client.socket.tcpNoDelay = true }
-                                client.authPassword(host.username, password)
-
-                                // bind the connected client to the session manager
-                                val boundSuccessfully = sessionManager.bind(client)
-                                if (!boundSuccessfully) {
-                                    errorMessage =
-                                        "An active SSH session is already running. Close it."
-                                    return@withContext
-                                }
-                                connectionTransferred = true
-                                // suceeded.
                             }
-                            if (connectionTransferred) {
-                                onConnect()
-                            }
+                            onConnect()
+                        } catch (e: HostKeyMismatchException) {
+                            errorMessage =
+                                "Server identity changed. Expected ${e.expectedFingerprint}, " +
+                                "but the server presented ${e.actualFingerprint}."
                         } catch (e: TransportException) {
                             errorMessage = when (e.disconnectReason) {
                                 DisconnectReason.HOST_KEY_NOT_VERIFIABLE ->
@@ -165,14 +162,6 @@ fun WorkspacePrepareClient(
                         } catch (e: Exception) {
                             errorMessage = "Connection failed: $e"
                         } finally {
-                            if (!connectionTransferred) {
-                                withContext(Dispatchers.IO) {
-                                    runCatching {
-                                        client?.close()
-                                    }
-                                }
-                            }
-
                             connectEnable = true
                         }
                     }

@@ -9,18 +9,85 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.ngtv.neodroid.database.AppDatabase
+import com.ngtv.neodroid.database.SSHHostRepository
+import com.ngtv.neodroid.sshUtils.SshConnection
+import com.ngtv.neodroid.sshUtils.SshConnectionHistory
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SshManagerService : Service() {
     private val binder = LocalBinder()
-    val sessionManager = SshSessionManager()
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private lateinit var database: AppDatabase
+    private lateinit var repository: SSHHostRepository
+
+    lateinit var sessionManager: SshSessionManager
+        private set
+
     private val _isRunning = MutableStateFlow(true)
     val isRunning: StateFlow<Boolean> = _isRunning
 
     inner class LocalBinder : Binder() {
         fun getService(): SshManagerService = this@SshManagerService
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+
+        database = AppDatabase.getInstance(applicationContext)
+        repository = SSHHostRepository(database.SSHHostDao())
+
+        sessionManager =
+            SshSessionManager(
+                history =
+                    object : SshConnectionHistory {
+                        override suspend fun onConnected(
+                            connection: SshConnection,
+                            hostKeyLearned: Boolean,
+                        ) {
+                            withContext(Dispatchers.IO) {
+                                repository.markConnected(
+                                    connection.hostId,
+                                    connection.connectedAt,
+                                )
+
+                                if (hostKeyLearned) {
+                                    connection.hostKeyFingerprint?.let { fingerprint ->
+                                        repository.updateHostKey(
+                                            connection.hostId,
+                                            fingerprint,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+            )
+
+        serviceScope.launch {
+            sessionManager.connections.collect { connections ->
+                val active = connections.count { it.isHealthy }
+                val message =
+                    when (active) {
+                        0 -> "No active connections"
+
+                        1 -> connections.firstOrNull { it.isHealthy }?.displayName
+                            ?: "1 active connection"
+
+                        else -> "$active active connections"
+                    }
+                updateNotificationText(message)
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -32,13 +99,14 @@ class SshManagerService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, createNotification("SSH Service"))
+
+        startForeground(NOTIFICATION_ID, createNotification("SSH service running"))
         return START_STICKY
     }
 
     fun updateNotificationText(text: String) {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager?.notify(NOTIFICATION_ID, createNotification(text))
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        manager.notify(NOTIFICATION_ID, createNotification(text))
     }
 
     private fun createNotification(message: String): Notification {
@@ -46,10 +114,14 @@ class SshManagerService : Service() {
         val channelName = "SSH Connection"
 
         val manager = getSystemService(NotificationManager::class.java)
-        if (manager.getNotificationChannel(channelId) == null) {
+        if (manager?.getNotificationChannel(channelId) == null) {
             val channel =
-                NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
-            manager.createNotificationChannel(channel)
+                NotificationChannel(
+                    channelId,
+                    channelName,
+                    NotificationManager.IMPORTANCE_LOW,
+                )
+            manager?.createNotificationChannel(channel)
         }
 
         val stopIntent = Intent(this, SshManagerService::class.java).apply {
@@ -79,7 +151,8 @@ class SshManagerService : Service() {
 
     override fun onDestroy() {
         _isRunning.value = false
-        sessionManager.close()
+        runCatching { sessionManager.close() }
+        serviceScope.cancel()
         super.onDestroy()
     }
 

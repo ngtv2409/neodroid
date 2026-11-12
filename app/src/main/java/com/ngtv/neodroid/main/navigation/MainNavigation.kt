@@ -23,11 +23,6 @@ import com.ngtv.neodroid.nvim.NvimSession
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import kotlinx.coroutines.CancellationException
-import net.schmizz.sshj.SSHClient
-import net.schmizz.sshj.common.DisconnectReason
-import net.schmizz.sshj.connection.channel.direct.Session
-import net.schmizz.sshj.transport.TransportException
-import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

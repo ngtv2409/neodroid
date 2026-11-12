@@ -7,14 +7,17 @@ import androidx.compose.runtime.setValue
 import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimConnectionException
 import com.ngtv.neodroid.nvim.NvimSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import java.io.Closeable
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 sealed interface WorkspaceTool : Closeable {
     val id: String
@@ -31,74 +34,161 @@ class NvimTool(
 
     var connectionFailure: NvimConnectionException? = null
 
+    private val closed = AtomicBoolean(false)
+
     override fun close() {
-        nvimSession.close()
-        command.close()
-        sshSession.close()
+        if (!closed.compareAndSet(false, true)) return
+
+        runCatching { nvimSession.close() }
+        runCatching { command.close() }
+        runCatching { sshSession.close() }
     }
 }
 
+/**
+ * One independent editor workspace inside an [SshConnection].
+ *
+ * A workspace owns at most [MAX_TOOLS] tools (Neovim processes). Several
+ * workspaces can share the same underlying SSH connection.
+ */
 class WorkspaceSession(
+    val id: String,
+    val connectionId: String,
+    val title: String,
     private val sshClient: SSHClient,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+    val createdAt: Long = System.currentTimeMillis(),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : Closeable {
 
     val tools = mutableStateListOf<WorkspaceTool>()
     var activeToolId by mutableStateOf<String?>(null)
         private set
 
+    private val toolLock = Any()
+    private val toolSequence = AtomicLong(0)
+    private val closed = AtomicBoolean(false)
+
+    val hasRunningTools: Boolean
+        get() = synchronized(toolLock) { tools.isNotEmpty() }
+
     suspend fun startNvim(): NvimTool = withContext(Dispatchers.IO) {
-        val sshSession = sshClient.startSession()
-        val cmd = sshSession.exec("nvim --embed")
-        val client = NeovimClient(
-            cmd.inputStream, // Neovim stdout -> client input
-            cmd.outputStream, // client output -> Neovim stdin
-            scope,
-        )
-
-        val nvimSession = NvimSession.create(client)
-        val toolId = "nvim_${System.currentTimeMillis()}"
-        val tool = NvimTool(toolId, sshSession, nvimSession, cmd)
-
-        tools.add(tool)
-        activeToolId = toolId
-        tool
+        startTool { sshSession ->
+            sshSession.exec("nvim --embed")
+        }
     }
 
     suspend fun startNvimConnectToSock(socketPath: String): NvimTool = withContext(Dispatchers.IO) {
-        val sshSession = sshClient.startSession()
-        val cmd = sshSession.exec("exec socat STDIO 'UNIX-CONNECT:$socketPath'")
-        val client = NeovimClient(
-            cmd.inputStream, // Neovim stdout -> client input
-            cmd.outputStream, // client output -> Neovim stdin
-            scope,
-        )
+        startTool { sshSession ->
+            sshSession.exec("exec socat STDIO 'UNIX-CONNECT:$socketPath'")
+        }
+    }
 
-        val nvimSession = NvimSession.create(client)
-        val toolId = "nvim_${System.currentTimeMillis()}"
-        val tool = NvimTool(toolId, sshSession, nvimSession, cmd)
-
-        tools.add(tool)
-        activeToolId = toolId
-        tool
+    fun activateTool(id: String): Boolean = synchronized(toolLock) {
+        val tool = tools.find { it.id == id } ?: return@synchronized false
+        activeToolId = tool.id
+        true
     }
 
     fun closeTool(id: String) {
-        val tool = tools.find { it.id == id } ?: return
-        tools.remove(tool)
+        val tool = synchronized(toolLock) {
+            val found = tools.find { it.id == id } ?: return
+            tools.remove(found)
+            if (activeToolId == id) {
+                activeToolId = tools.lastOrNull()?.id
+            }
+            found
+        }
 
-        tool.close()
+        runCatching { tool.close() }
+    }
 
-        if (activeToolId == id) {
-            activeToolId = tools.lastOrNull()?.id
+    private suspend fun startTool(exec: (Session) -> Session.Command): NvimTool {
+        checkOpen()
+        ensureToolCapacity()
+
+        val sshSession = sshClient.startSession()
+        var command: Session.Command? = null
+        var client: NeovimClient? = null
+
+        try {
+            val startedCommand = exec(sshSession)
+            command = startedCommand
+            val nvimClient = NeovimClient(
+                startedCommand.inputStream, // Neovim stdout -> client input
+                startedCommand.outputStream, // client output -> Neovim stdin
+                scope,
+            )
+            client = nvimClient
+            val nvimSession = NvimSession.create(nvimClient)
+            val tool =
+                NvimTool(
+                    id = "nvim_${toolSequence.incrementAndGet()}",
+                    sshSession = sshSession,
+                    nvimSession = nvimSession,
+                    command = startedCommand,
+                )
+
+            val added = synchronized(toolLock) {
+                if (closed.get()) {
+                    false
+                } else {
+                    tools.add(tool)
+                    activeToolId = tool.id
+                    true
+                }
+            }
+
+            if (!added) {
+                runCatching { tool.close() }
+                throw SshException("Workspace $id is closed")
+            }
+
+            return tool
+        } catch (e: CancellationException) {
+            runCatching { client?.close() }
+            runCatching { command?.close() }
+            runCatching { sshSession.close() }
+            throw e
+        } catch (e: Exception) {
+            runCatching { client?.close() }
+            runCatching { command?.close() }
+            runCatching { sshSession.close() }
+            throw e
+        }
+    }
+
+    private fun checkOpen() {
+        if (closed.get()) throw SshException("Workspace $id is closed")
+    }
+
+    private fun ensureToolCapacity() {
+        synchronized(toolLock) {
+            if (closed.get()) throw SshException("Workspace $id is closed")
+            if (tools.size >= MAX_TOOLS) {
+                throw SshLimitException(
+                    "Workspace $id already has the maximum of $MAX_TOOLS tools",
+                )
+            }
         }
     }
 
     override fun close() {
-        tools.forEach { tool ->
-            tool.close()
+        if (!closed.compareAndSet(false, true)) return
+
+        val remaining = synchronized(toolLock) {
+            val snapshot = tools.toList()
+            tools.clear()
+            activeToolId = null
+            snapshot
         }
-        tools.clear()
+
+        remaining.forEach { tool ->
+            runCatching { tool.close() }
+        }
         scope.cancel()
+    }
+
+    companion object {
+        private const val MAX_TOOLS = 16
     }
 }

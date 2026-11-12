@@ -1,22 +1,15 @@
 package com.ngtv.neodroid.database
 
 import android.content.Context
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewModelScope
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [SSHHostEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,12 +20,21 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var databaseInstance: AppDatabase? = null
 
+        private val MIGRATION_1_2 =
+            object : Migration(1, 2) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE ssh_hosts ADD COLUMN last_connected_at INTEGER",
+                    )
+                }
+            }
+
         fun getInstance(context: Context): AppDatabase = databaseInstance ?: synchronized(this) {
             databaseInstance ?: Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "app_database",
-            ).build().also {
+            ).addMigrations(MIGRATION_1_2).build().also {
                 databaseInstance = it
             }
         }
