@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -33,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.database.SSHHostEntity
@@ -333,18 +335,33 @@ private fun HomeSectionHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = Spacing.lg, end = Spacing.sm, top = Spacing.md, bottom = Spacing.xs),
+            .padding(start = Spacing.lg, end = Spacing.sm, top = Spacing.lg, bottom = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = if (count > 0) "$title  $count" else title,
+            text = title,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
         )
+        if (count > 0) {
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         if (actionLabel != null) {
             TextButton(onClick = onAction) {
-                Text(actionLabel)
+                Text(
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
     }
@@ -365,7 +382,8 @@ private fun OnlineConnectionRow(connection: SshConnection, onClick: () -> Unit) 
         headlineContent = {
             Text(
                 text = connection.serverName,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                color = LocalContentColor.current,
             )
         },
         supportingContent = {
@@ -379,7 +397,7 @@ private fun OnlineConnectionRow(connection: SshConnection, onClick: () -> Unit) 
             Text(
                 text = "${workspaces.size} ws  ›",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = LocalContentColor.current.copy(alpha = 0.7f),
             )
         },
         onClick = onClick,
@@ -389,12 +407,11 @@ private fun OnlineConnectionRow(connection: SshConnection, onClick: () -> Unit) 
 @Composable
 private fun RecentHostRow(host: SSHHostEntity, onClick: () -> Unit) {
     CompactListItem(
-        leadingContent = {
-        },
         headlineContent = {
             Text(
                 text = host.server_name,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                color = LocalContentColor.current,
             )
         },
         supportingContent = {
@@ -419,27 +436,29 @@ private fun RecentHostRow(host: SSHHostEntity, onClick: () -> Unit) {
 @Composable
 private fun HostRow(host: SSHHostEntity, selected: Boolean, onClick: () -> Unit) {
     CompactListItem(
-        leadingContent = {
-        },
         headlineContent = {
             Text(
                 text = host.server_name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                color = LocalContentColor.current,
             )
         },
         supportingContent = {
             Text(
                 text = "${host.username}@${host.hostname} • ${host.port}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (selected) {
+                    LocalContentColor.current.copy(alpha = 0.72f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         },
         trailingContent = {
             Text(
                 text = "›",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = LocalContentColor.current.copy(alpha = 0.7f),
             )
         },
         onClick = onClick,
@@ -479,8 +498,8 @@ private fun EmptyDetailPane() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "Select a host",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = "Choose a host from the list, or add a new one.",

@@ -85,6 +85,7 @@ private fun SessionSwitcher(
             modifier = Modifier
                 .height(32.dp)
                 .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .clickable(enabled = tools.isNotEmpty()) { expanded = true }
                 .padding(horizontal = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
@@ -93,12 +94,14 @@ private fun SessionSwitcher(
                 text = currentTool?.title ?: "Sessions",
                 modifier = Modifier.widthIn(max = 92.dp),
                 style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = " ▾",
                 style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -163,6 +166,7 @@ private fun AddSessionButton(onClick: () -> Unit) {
         Text(
             text = "+",
             style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }

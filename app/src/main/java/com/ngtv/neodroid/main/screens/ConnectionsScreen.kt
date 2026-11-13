@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.sshUtils.SshConnection
@@ -157,7 +158,10 @@ private fun ConnectionCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = connection.serverName,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
                         text = "${connection.username}@${connection.hostname}:${connection.port}",

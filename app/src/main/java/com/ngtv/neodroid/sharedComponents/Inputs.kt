@@ -67,7 +67,10 @@ fun ValidatedTextField(
                 }
 
                 maxLength != null -> {
-                    Text("${value.length}/$maxLength characters")
+                    Text(
+                        text = "${value.length}/$maxLength characters",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         },

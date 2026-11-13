@@ -16,6 +16,8 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -109,15 +111,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             NeodroidTheme {
-                val sessionManager = sshService?.sessionManager
-                if (isBound && sessionManager != null) {
-                    MainNavigation(sshHostViewModel, sessionManager)
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    val sessionManager = sshService?.sessionManager
+                    if (isBound && sessionManager != null) {
+                        MainNavigation(sshHostViewModel, sessionManager)
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
                     }
                 }
             }
