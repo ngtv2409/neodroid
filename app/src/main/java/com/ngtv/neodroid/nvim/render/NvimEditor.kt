@@ -1,5 +1,13 @@
 package com.ngtv.neodroid.nvim.render
 
+import android.content.Context
+import android.text.InputType
+import android.view.KeyEvent
+import android.view.View
+import android.view.inputmethod.BaseInputConnection
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -10,44 +18,31 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.ngtv.neodroid.R
 import com.ngtv.neodroid.nvim.CursorState
 import com.ngtv.neodroid.nvim.NvimFrame
@@ -66,8 +61,8 @@ fun NvimEditor(
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    val inputView = remember(context) { NvimInputView(context) }
 
     val baseTextStyle = remember {
         TextStyle(
@@ -96,10 +91,9 @@ fun NvimEditor(
         modifier = modifier
             .fillMaxSize()
             .background(frame.defaultColors.background)
-            .pointerInput(Unit) {
+            .pointerInput(inputView) {
                 detectTapGestures {
-                    focusRequester.requestFocus()
-                    keyboardController?.show()
+                    inputView.focusAndShowKeyboard()
                 }
             },
     ) {
@@ -156,7 +150,7 @@ fun NvimEditor(
         }
 
         NvimInputCapture(
-            focusRequester = focusRequester,
+            view = inputView,
             onInput = onInput,
         )
     }
@@ -257,89 +251,142 @@ private fun NvimCursorOverlay(cursor: CursorState, cellWidth: Dp, cellHeight: Dp
     }
 }
 
-// A hidden text field captures soft keyboard input.
-// TODO: is there a better way?
+/**
+ * The replacement to the old method (hidden text input)
+ * This mirrors Termux-app TerminalView's approach and keyboard configs
+ */
 @Composable
-private fun NvimInputCapture(focusRequester: FocusRequester, onInput: (String) -> Unit) {
-    val currentOnInput by rememberUpdatedState(onInput)
-
-    var inputValue by remember {
-        mutableStateOf(
-            TextFieldValue(
-                text = INPUT_SENTINEL,
-                selection = TextRange(INPUT_SENTINEL.length),
-            ),
-        )
-    }
-
-    BasicTextField(
-        value = inputValue,
-        onValueChange = { newValue ->
-            currentOnInput(encodeNvimInput(inputValue.text, newValue.text))
-
-            val sanitized = if (INPUT_SENTINEL in newValue.text) {
-                newValue
-            } else {
-                TextFieldValue(
-                    text = newValue.text + INPUT_SENTINEL,
-                    selection = TextRange(
-                        newValue.text.length + INPUT_SENTINEL.length,
-                    ),
-                )
-            }
-
-            inputValue = if (
-                sanitized.composition == null &&
-                sanitized.text.length > MAX_INPUT_SCRATCH
-            ) {
-                TextFieldValue(
-                    text = INPUT_SENTINEL,
-                    selection = TextRange(INPUT_SENTINEL.length),
-                )
-            } else {
-                sanitized
-            }
-        },
+private fun NvimInputCapture(view: NvimInputView, onInput: (String) -> Unit) {
+    AndroidView(
+        factory = { view },
+        update = { it.onInput = onInput },
         modifier = Modifier
             .size(1.dp)
-            .alpha(0f)
-            .focusRequester(focusRequester),
-        textStyle = TextStyle(
-            color = Color.Transparent,
-            fontSize = 1.sp,
-        ),
-        cursorBrush = SolidColor(Color.Transparent),
-        keyboardOptions = KeyboardOptions(
-            capitalization = KeyboardCapitalization.None,
-            autoCorrectEnabled = false,
-            keyboardType = KeyboardType.Password,
-            imeAction = ImeAction.None,
-        ),
-        singleLine = false,
+            .alpha(0f),
     )
 }
 
-private const val INPUT_SENTINEL = "\u200B"
-private const val MAX_INPUT_SCRATCH = 4096
-private val RESIZE_DEBOUNCE_MS: Duration = 100.milliseconds
+private class NvimInputView(context: Context) : View(context) {
+    var onInput: (String) -> Unit = {}
 
-// nvim key notations
-private fun encodeNvimInput(oldText: String, newText: String): String {
-    val prefix = oldText.commonPrefixWith(newText).length
-    val maxSuffix = minOf(oldText.length, newText.length) - prefix
-    val suffix = oldText.commonSuffixWith(newText).length.coerceAtMost(maxSuffix)
-    val removed = oldText.length - prefix - suffix
-    val inserted = newText.substring(prefix, newText.length - suffix)
+    init {
+        isFocusable = true
+        isFocusableInTouchMode = true
+    }
 
-    return buildString {
-        repeat(removed) { append("<BS>") }
-        inserted.forEach { char ->
-            when (char) {
-                '\n', '\r' -> append("<CR>")
-                '\t' -> append("<Tab>")
-                '<' -> append("<LT>")
-                else -> append(char)
+    fun focusAndShowKeyboard() {
+        requestFocus()
+        post {
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(this, 0)
+        }
+    }
+
+    override fun onCheckIsTextEditor(): Boolean = true
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
+        // options based on termux
+        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
+
+        return object : BaseInputConnection(this@NvimInputView, true) {
+            override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                super.commitText(text, newCursorPosition)
+                sendEditable()
+                return true
+            }
+
+            override fun finishComposingText(): Boolean {
+                super.finishComposingText()
+                sendEditable()
+                return true
+            }
+
+            override fun deleteSurroundingText(leftLength: Int, rightLength: Int): Boolean {
+                if (leftLength > 0) {
+                    this@NvimInputView.onInput("<BS>".repeat(leftLength))
+                }
+                return super.deleteSurroundingText(leftLength, rightLength)
+            }
+
+            private fun sendEditable() {
+                val content = editable ?: return
+                if (content.isNotEmpty()) {
+                    this@NvimInputView.onInput(content.toNvimKeys())
+                    content.clear()
+                }
             }
         }
     }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val keys = event.toNvimKeys() ?: return super.onKeyDown(keyCode, event)
+        onInput(keys)
+        return true
+    }
+}
+
+private val RESIZE_DEBOUNCE_MS: Duration = 100.milliseconds
+
+// nvim key notations
+private fun CharSequence.toNvimKeys(): String = buildString(length) {
+    for (char in this@toNvimKeys) {
+        when (char) {
+            '\n', '\r' -> append("<CR>")
+            '\t' -> append("<Tab>")
+            '<' -> append("<LT>")
+            else -> append(char)
+        }
+    }
+}
+
+private fun KeyEvent.toNvimKeys(): String? {
+    val named = when (keyCode) {
+        KeyEvent.KEYCODE_DEL -> "BS"
+        KeyEvent.KEYCODE_FORWARD_DEL -> "Del"
+        KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> "CR"
+        KeyEvent.KEYCODE_TAB -> "Tab"
+        KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BACK -> "Esc"
+        KeyEvent.KEYCODE_DPAD_LEFT -> "Left"
+        KeyEvent.KEYCODE_DPAD_RIGHT -> "Right"
+        KeyEvent.KEYCODE_DPAD_UP -> "Up"
+        KeyEvent.KEYCODE_DPAD_DOWN -> "Down"
+        KeyEvent.KEYCODE_MOVE_HOME -> "Home"
+        KeyEvent.KEYCODE_MOVE_END -> "End"
+        KeyEvent.KEYCODE_PAGE_UP -> "PageUp"
+        KeyEvent.KEYCODE_PAGE_DOWN -> "PageDown"
+        KeyEvent.KEYCODE_INSERT -> "Insert"
+        else -> null
+    }
+
+    if (named != null) {
+        val modifiers = buildString {
+            if (isCtrlPressed) append("C-")
+            if (isAltPressed) append("M-")
+            if (isShiftPressed) append("S-")
+        }
+        return "<$modifiers$named>"
+    }
+
+    val unicode = unicodeChar
+    if (unicode == 0) return null
+
+    val base = if (isCtrlPressed || isAltPressed) getUnicodeChar(0) else unicode
+    if (base == 0) return null
+
+    val char = base.toChar()
+    if (Character.isISOControl(char)) return null
+
+    val modifiers = buildString {
+        if (isCtrlPressed) append("C-")
+        if (isAltPressed) append("M-")
+    }
+    val key = when (char) {
+        '<' -> "lt"
+        ' ' -> "Space"
+        else -> char.toString()
+    }
+    return if (modifiers.isEmpty()) key.toNvimKeys() else "<$modifiers$key>"
 }
