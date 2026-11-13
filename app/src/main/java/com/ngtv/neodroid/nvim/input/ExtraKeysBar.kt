@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.ngtv.neodroid.ui.theme.Spacing
 
 // the extra key bar
 @Composable
@@ -40,14 +41,14 @@ fun ExtraKeysBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(EXTRA_KEYS_BAR_HEIGHT)
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 keys.forEach { key ->
@@ -66,7 +67,7 @@ fun ExtraKeysBar(
                 }
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(Spacing.xs))
             trailing()
         }
     }

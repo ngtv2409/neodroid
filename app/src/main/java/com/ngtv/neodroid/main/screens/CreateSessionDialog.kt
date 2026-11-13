@@ -19,8 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.sharedComponents.ValidatedTextField
+import com.ngtv.neodroid.ui.theme.Spacing
 
 @Composable
 internal fun CreateSessionDialog(
@@ -43,7 +43,7 @@ internal fun CreateSessionDialog(
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 Text(
                     text = "Choose a session type",
@@ -51,7 +51,7 @@ internal fun CreateSessionDialog(
                 )
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
                     SessionType.entries.forEach { type ->
                         FilterChip(

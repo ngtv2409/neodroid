@@ -33,6 +33,7 @@ import com.ngtv.neodroid.nvim.input.ExtraKeysBar
 import com.ngtv.neodroid.nvim.input.ExtraKeysState
 import com.ngtv.neodroid.nvim.input.rememberExtraKeysState
 import com.ngtv.neodroid.sshUtils.WorkspaceTool
+import com.ngtv.neodroid.ui.theme.Spacing
 
 /**
  * Bottom control bar with extra keys and functionalities
@@ -64,7 +65,7 @@ internal fun WorkspaceControlBar(
                 onSelect = onSelectTool,
                 onClose = onCloseTool,
             )
-            Spacer(modifier = Modifier.width(2.dp))
+            Spacer(modifier = Modifier.width(Spacing.xxs))
             AddSessionButton(onClick = onAddTool)
         },
     )
@@ -85,7 +86,7 @@ private fun SessionSwitcher(
                 .height(32.dp)
                 .clip(MaterialTheme.shapes.small)
                 .clickable(enabled = tools.isNotEmpty()) { expanded = true }
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
