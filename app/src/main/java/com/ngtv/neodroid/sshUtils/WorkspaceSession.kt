@@ -26,12 +26,11 @@ sealed interface WorkspaceTool : Closeable {
 
 class NvimTool(
     override val id: String,
+    override val title: String,
     val sshSession: Session,
     val nvimSession: NvimSession,
     val command: Session.Command,
 ) : WorkspaceTool {
-    override val title = "Neovim"
-
     var connectionFailure: NvimConnectionException? = null
 
     private val closed = AtomicBoolean(false)
@@ -72,13 +71,13 @@ class WorkspaceSession(
         get() = synchronized(toolLock) { tools.isNotEmpty() }
 
     suspend fun startNvim(): NvimTool = withContext(Dispatchers.IO) {
-        startTool { sshSession ->
+        startTool("Neovim") { sshSession ->
             sshSession.exec("nvim --embed")
         }
     }
 
     suspend fun startNvimConnectToSock(socketPath: String): NvimTool = withContext(Dispatchers.IO) {
-        startTool { sshSession ->
+        startTool("Neovim socket") { sshSession ->
             sshSession.exec("exec socat STDIO 'UNIX-CONNECT:$socketPath'")
         }
     }
@@ -102,7 +101,10 @@ class WorkspaceSession(
         runCatching { tool.close() }
     }
 
-    private suspend fun startTool(exec: (Session) -> Session.Command): NvimTool {
+    private suspend fun startTool(
+        titlePrefix: String,
+        exec: (Session) -> Session.Command,
+    ): NvimTool {
         checkOpen()
         ensureToolCapacity()
 
@@ -120,9 +122,11 @@ class WorkspaceSession(
             )
             client = nvimClient
             val nvimSession = NvimSession.create(nvimClient)
+            val sequence = toolSequence.incrementAndGet()
             val tool =
                 NvimTool(
-                    id = "nvim_${toolSequence.incrementAndGet()}",
+                    id = "nvim_$sequence",
+                    title = "$titlePrefix $sequence",
                     sshSession = sshSession,
                     nvimSession = nvimSession,
                     command = startedCommand,

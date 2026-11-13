@@ -335,20 +335,33 @@ private fun CharSequence.toNvimKeys(): String = buildString(length) {
     for (char in this@toNvimKeys) {
         when (char) {
             '\n', '\r' -> append("<CR>")
-            '\t' -> append("<Tab>")
+
+            // A raw tab is handled consistently by both Neovim and Android IMEs.
+            '\t' -> append('\t')
+
             '<' -> append("<LT>")
+
             else -> append(char)
         }
     }
 }
 
 private fun KeyEvent.toNvimKeys(): String? {
+    if (
+        keyCode == KeyEvent.KEYCODE_TAB &&
+        !isCtrlPressed &&
+        !isAltPressed &&
+        !isShiftPressed
+    ) {
+        return "\t"
+    }
+
     val named = when (keyCode) {
         KeyEvent.KEYCODE_DEL -> "BS"
         KeyEvent.KEYCODE_FORWARD_DEL -> "Del"
         KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> "CR"
         KeyEvent.KEYCODE_TAB -> "Tab"
-        KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BACK -> "Esc"
+        KeyEvent.KEYCODE_ESCAPE -> "Esc"
         KeyEvent.KEYCODE_DPAD_LEFT -> "Left"
         KeyEvent.KEYCODE_DPAD_RIGHT -> "Right"
         KeyEvent.KEYCODE_DPAD_UP -> "Up"

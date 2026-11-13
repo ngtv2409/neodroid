@@ -3,48 +3,41 @@ package com.ngtv.neodroid.main.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.nvim.input.ExtraKeyAction
+import com.ngtv.neodroid.nvim.input.rememberExtraKeysState
 import com.ngtv.neodroid.nvim.render.NvimEditor
-import com.ngtv.neodroid.sharedComponents.ValidatedTextField
 import com.ngtv.neodroid.sshUtils.NvimTool
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
+import com.ngtv.neodroid.sshUtils.WorkspaceTool
+import com.ngtv.neodroid.ui.theme.Spacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -55,11 +48,18 @@ fun SshSessionScreen(session: WorkspaceSession) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var selectedTab by remember { mutableIntStateOf(-1) }
-    val pagerState = rememberPagerState { session.tools.size }
+    val initialIndex = remember(session.id) {
+        session.tools.indexOfFirst { it.id == session.activeToolId }
+            .takeIf { it >= 0 }
+            ?: 0
+    }
 
-    var currentId by remember { mutableStateOf("") }
-    var selectedToolAdd by remember { mutableStateOf<ToolType?>(null) }
+    var selectedIndex by remember(session.id) { mutableIntStateOf(initialIndex) }
+    val pagerState = rememberPagerState(initialPage = initialIndex) { session.tools.size }
+    val currentTool = session.tools.getOrNull(selectedIndex)
+    val extraKeysState = rememberExtraKeysState()
+
+    var showCreateSession by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Display each error and automatically dismiss it after 3 seconds.
@@ -74,152 +74,147 @@ fun SshSessionScreen(session: WorkspaceSession) {
         errorMessage = null
     }
 
+    fun selectTool(tool: WorkspaceTool) {
+        val index = session.tools.indexOfFirst { it.id == tool.id }
+        if (index < 0) return
+
+        extraKeysState.clearModifiers()
+        selectedIndex = index
+        session.activateTool(tool.id)
+        scope.launch {
+            pagerState.scrollToPage(index)
+        }
+    }
+
+    fun closeTool(tool: WorkspaceTool) {
+        val closedIndex = session.tools.indexOfFirst { it.id == tool.id }
+        if (closedIndex < 0) return
+
+        val currentIndex = selectedIndex
+        extraKeysState.clearModifiers()
+
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                session.closeTool(tool.id)
+            }
+
+            if (session.tools.isEmpty()) {
+                selectedIndex = 0
+            } else {
+                val newIndex = when {
+                    closedIndex < currentIndex -> currentIndex - 1
+                    closedIndex > currentIndex -> currentIndex
+                    else -> closedIndex
+                }.coerceIn(0, session.tools.lastIndex)
+
+                selectedIndex = newIndex
+                session.activateTool(session.tools[newIndex].id)
+                pagerState.scrollToPage(newIndex)
+            }
+        }
+    }
+
+    fun createSession(type: SessionType, inputs: Map<String, String>) {
+        showCreateSession = false
+        extraKeysState.clearModifiers()
+
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    when (type) {
+                        SessionType.NvimEmbedded -> session.startNvim()
+
+                        SessionType.NvimUnixSocket ->
+                            session.startNvimConnectToSock(
+                                inputs["socketpath"].orEmpty(),
+                            )
+                    }
+                }
+
+                val lastIndex = session.tools.lastIndex
+                if (lastIndex >= 0) {
+                    selectedIndex = lastIndex
+                    pagerState.scrollToPage(lastIndex)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = "Error: ${e.message ?: e}"
+            }
+        }
+    }
+
     Scaffold(
-        modifier = Modifier.imePadding(),
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
+        contentWindowInsets = WindowInsets(0),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         },
+        bottomBar = {
+            WorkspaceControlBar(
+                tools = session.tools,
+                currentTool = currentTool,
+                onSelectTool = ::selectTool,
+                onCloseTool = ::closeTool,
+                onAddTool = {
+                    extraKeysState.clearModifiers()
+                    showCreateSession = true
+                },
+                onKeyAction = { action ->
+                    val tool = currentTool as? NvimTool
+                    if (tool != null) {
+                        when (action) {
+                            is ExtraKeyAction.SendKeys ->
+                                tool.nvimSession.sendInput(action.keys)
+
+                            is ExtraKeyAction.Modifier -> Unit
+                        }
+                    }
+                },
+                extraKeysState = extraKeysState,
+            )
+        },
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            if (session.tools.isNotEmpty()) {
-                PrimaryScrollableTabRow(
-                    selectedTabIndex = selectedTab.coerceIn(
-                        0,
-                        (session.tools.size - 1).coerceAtLeast(0),
-                    ),
-                    edgePadding = 4.dp,
-                    divider = {},
-                ) {
-                    session.tools.forEachIndexed { index, tool ->
-                        Tab(
-                            selected = selectedTab == index,
-                            modifier = Modifier.height(40.dp),
-                            onClick = {
-                                selectedTab = index
-                                currentId = tool.id
-                                scope.launch {
-                                    pagerState.animateScrollToPage(index)
-                                }
-                            },
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                ) {
-                                    Text(
-                                        text = tool.title,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        maxLines = 1,
-                                    )
-
-                                    IconButton(
-                                        modifier = Modifier.height(28.dp),
-                                        onClick = {
-                                            scope.launch {
-                                                val closedIndex =
-                                                    session.tools.indexOfFirst {
-                                                        it.id == tool.id
-                                                    }
-                                                val currentIndex =
-                                                    session.tools.indexOfFirst {
-                                                        it.id == currentId
-                                                    }
-
-                                                withContext(Dispatchers.IO) {
-                                                    session.closeTool(tool.id)
-                                                }
-
-                                                selectedTab =
-                                                    if (tool.id == currentId) {
-                                                        when {
-                                                            session.tools.isEmpty() -> -1
-
-                                                            closedIndex == session.tools.size ->
-                                                                closedIndex - 1
-
-                                                            closedIndex > 0 -> closedIndex
-
-                                                            else -> 0
-                                                        }
-                                                    } else if (
-                                                        closedIndex < currentIndex
-                                                    ) {
-                                                        currentIndex - 1
-                                                    } else {
-                                                        currentIndex
-                                                    }
-
-                                                if (session.tools.isNotEmpty()) {
-                                                    val newIndex = selectedTab.coerceIn(
-                                                        0,
-                                                        session.tools.lastIndex,
-                                                    )
-                                                    selectedTab = newIndex
-                                                    currentId =
-                                                        session.tools[newIndex].id
-                                                    pagerState.scrollToPage(newIndex)
-                                                } else {
-                                                    currentId = ""
-                                                }
-                                            }
-                                        },
-                                    ) {
-                                        Text("×")
-                                    }
-                                }
-                            },
-                        )
-                    }
-
-                    AddToolDropdown(
-                        onToolSelected = { tool ->
-                            selectedToolAdd = tool
-                        },
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.height(40.dp).fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AddToolDropdown(
-                        onToolSelected = { tool ->
-                            selectedToolAdd = tool
-                        },
-                    )
-                }
-            }
-
             if (session.tools.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("No tools available")
-                }
+                EmptyWorkspace(
+                    onAddSession = { showCreateSession = true },
+                )
             } else {
                 HorizontalPager(
                     state = pagerState,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     userScrollEnabled = false,
                 ) { page ->
-                    when (val tool = session.tools[page]) {
+                    when (val tool = session.tools.getOrNull(page)) {
                         is NvimTool -> {
                             if (tool.connectionFailure != null) {
-                                Text("Error: ${tool.connectionFailure}")
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(Spacing.lg),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "Error: ${tool.connectionFailure}",
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
                             } else {
                                 val frame by tool.nvimSession.state
                                     .collectAsStateWithLifecycle()
                                 NvimEditor(
                                     frame = frame,
                                     onInput = { input ->
-                                        tool.nvimSession.sendInput(input)
+                                        tool.nvimSession.sendInput(
+                                            extraKeysState.applyToInput(input),
+                                        )
                                     },
                                     onResize = { width, height ->
                                         tool.nvimSession.resize(width, height)
@@ -227,166 +222,47 @@ fun SshSessionScreen(session: WorkspaceSession) {
                                 )
                             }
                         }
+
+                        null -> Unit
                     }
                 }
             }
         }
     }
 
-    selectedToolAdd?.let { tool ->
-        CreateToolDialog(
-            tool = tool,
-            onDismiss = { selectedToolAdd = null },
-            onSubmit = { inputMap ->
-                selectedToolAdd = null
-
-                scope.launch {
-                    try {
-                        withContext(Dispatchers.IO) {
-                            when (tool) {
-                                ToolType.NvimEmbedded -> session.startNvim()
-
-                                ToolType.NvimUnixSocket ->
-                                    session.startNvimConnectToSock(
-                                        inputMap["socketpath"]!!,
-                                    )
-                            }
-                        }
-
-                        val lastIndex = session.tools.lastIndex
-                        if (lastIndex >= 0) {
-                            selectedTab = lastIndex
-                            currentId = session.tools[lastIndex].id
-                            pagerState.scrollToPage(lastIndex)
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        errorMessage = "Error: ${e.message ?: e}"
-                    }
-                }
-            },
+    if (showCreateSession) {
+        CreateSessionDialog(
+            onDismiss = { showCreateSession = false },
+            onSubmit = ::createSession,
         )
     }
 }
 
 @Composable
-private fun AddToolDropdown(onToolSelected: (ToolType) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Box {
-        IconButton(
-            onClick = { expanded = true },
+private fun EmptyWorkspace(onAddSession: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = "No session open",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "Start a Neovim session to begin editing.",
+            modifier = Modifier.padding(top = Spacing.xs),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(
+            onClick = onAddSession,
+            modifier = Modifier.padding(top = Spacing.lg),
         ) {
-            Text("+")
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            ToolType.entries.forEach { tool ->
-                DropdownMenuItem(
-                    text = { Text(tool.label) },
-                    onClick = {
-                        expanded = false
-                        onToolSelected(tool)
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CreateToolDialog(
-    tool: ToolType,
-    onDismiss: () -> Unit,
-    onSubmit: (Map<String, String>) -> Unit,
-) {
-    val inputs: SnapshotStateMap<String, String> = remember(tool) {
-        mutableStateMapOf<String, String>().apply {
-            putAll(tool.createDefaultMutableMap())
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(tool.label)
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(tool.desc)
-                tool.fields.forEach { f ->
-                    ValidatedTextField(
-                        value = inputs[f.key]!!.ifBlank { "" },
-                        label = f.label,
-                        onValueChange = { inputs[f.key] = it },
-                        validator = f.validator,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = tool.isValidMap(inputs),
-                onClick = {
-                    onSubmit(inputs)
-                },
-            ) {
-                Text("Create")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
-}
-
-private data class ToolField(
-    val key: String,
-    val label: String,
-    val default: String = "",
-    val validator: (String) -> String? = { null },
-)
-private enum class ToolType(
-    val label: String,
-    val desc: String = "",
-    val fields: List<ToolField> = emptyList(),
-) {
-    NvimEmbedded("Launch Neovim"),
-    NvimUnixSocket(
-        "Connect to Nvim over UNIX socket",
-        "Needs socat installed on remote",
-        listOf(
-            ToolField("socketpath", "Socket path", "") {
-                if (it.isBlank()) {
-                    "Socket path is required"
-                } else {
-                    null
-                }
-            },
-        ),
-    ),
-    ;
-
-    fun createDefaultMutableMap(): MutableMap<String, String> {
-        val map = mutableMapOf<String, String>()
-        this.fields.forEach {
-            map[it.key] = it.default
-        }
-        return map
-    }
-
-    fun isValidMap(map: Map<String, String>): Boolean {
-        // every declared fields exist and validator passed
-        return this.fields.all {
-            map.containsKey(it.key) && it.validator(map[it.key]!!) == null
+            Text("New session")
         }
     }
 }

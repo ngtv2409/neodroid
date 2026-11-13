@@ -1,5 +1,6 @@
 package com.ngtv.neodroid.main.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -109,6 +110,9 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
                 WorkspaceSessionDestination(
                     sessionManager = sessionManager,
                     connectionId = connectionId,
+                    onBack = {
+                        navController.popBackStack("home", inclusive = false)
+                    },
                     onMissing = { navController.popBackStack() },
                 )
             }
@@ -120,8 +124,11 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
 private fun WorkspaceSessionDestination(
     sessionManager: SshSessionManager,
     connectionId: String,
+    onBack: () -> Unit,
     onMissing: () -> Unit,
 ) {
+    BackHandler(onBack = onBack)
+
     var session by remember(connectionId) {
         mutableStateOf<WorkspaceSession?>(null)
     }
