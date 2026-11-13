@@ -8,6 +8,11 @@ android {
     namespace = "com.ngtv.neodroid"
     compileSdk = 37
 
+    // TODO: maybe just use strings xml since we may want translations
+    buildFeatures {
+        resValues = true
+    }
+
     defaultConfig {
         applicationId = "com.ngtv.neodroid"
         minSdk = 24
@@ -22,12 +27,21 @@ android {
     }
 
     buildTypes {
+        release {
+            resValue("string", "app_name", "Neodroid")
+        }
+        debug {
+            applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "(Debug) Neodroid")
+        }
         // Optimized build identical to release, but signed with the debug key so it can
         // be installed locally without a release keystore.
         create("releaseDebug") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
+            applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "(Debug) Neodroid")
         }
     }
 }
