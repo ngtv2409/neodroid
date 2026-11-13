@@ -37,6 +37,7 @@ import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshConnectionState
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.ui.theme.Spacing
+import com.ngtv.neodroid.ui.theme.neodroidColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,8 +57,8 @@ fun ConnectionsScreen(
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -136,6 +137,11 @@ private fun ConnectionCard(
         is SshConnectionState.Disconnected -> current.reason ?: "Disconnected"
         is SshConnectionState.Failed -> "Failed"
     }
+    val statusColor = if (healthy) {
+        MaterialTheme.neodroidColors.online
+    } else {
+        MaterialTheme.colorScheme.error
+    }
 
     Card(
         modifier = Modifier
@@ -163,11 +169,7 @@ private fun ConnectionCard(
                     modifier = Modifier
                         .size(10.dp)
                         .background(
-                            color = if (healthy) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.error
-                            },
+                            color = statusColor,
                             shape = CircleShape,
                         ),
                 )
@@ -175,11 +177,7 @@ private fun ConnectionCard(
                 Text(
                     text = statusText,
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (healthy) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
+                    color = statusColor,
                 )
             }
 

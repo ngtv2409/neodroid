@@ -41,6 +41,7 @@ import com.ngtv.neodroid.sharedComponents.CompactListItem
 import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.ui.theme.Spacing
+import com.ngtv.neodroid.ui.theme.neodroidColors
 
 private val SplitPaneThreshold = 720.dp
 private val HostListPaneWidth = 360.dp
@@ -50,7 +51,7 @@ private const val MAX_HOME_RECENT_HOSTS = 5
 @Composable
 private fun homeTopBarColors() = TopAppBarDefaults.topAppBarColors(
     containerColor = MaterialTheme.colorScheme.primaryContainer,
-    titleContentColor = MaterialTheme.colorScheme.primary,
+    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
 )
 
 @Composable
@@ -148,7 +149,7 @@ private fun SplitHomeScreen(
 
     val selectedHost = hosts.firstOrNull { it.id == selectedHostId }
 
-    Row(modifier = Modifier.fillMaxSize()) {
+    Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
             modifier = Modifier.width(HostListPaneWidth).fillMaxHeight(),
         ) {
@@ -358,7 +359,7 @@ private fun OnlineConnectionRow(connection: SshConnection, onClick: () -> Unit) 
             Box(
                 modifier = Modifier
                     .size(10.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    .background(MaterialTheme.neodroidColors.online, CircleShape),
             )
         },
         headlineContent = {
@@ -424,6 +425,7 @@ private fun HostRow(host: SSHHostEntity, selected: Boolean, onClick: () -> Unit)
             Text(
                 text = host.server_name,
                 style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         supportingContent = {
