@@ -198,9 +198,11 @@ fun SshSessionScreen(session: WorkspaceSession) {
                                 .collectAsStateWithLifecycle()
 
                             if (failure != null) {
-                                errorMessage = failure?.message
-                                    ?: "Neovim session ended"
-                                closeTool(tool)
+                                LaunchedEffect(tool.id, failure) {
+                                    errorMessage = failure?.message
+                                        ?: "Neovim session ended"
+                                    closeTool(tool)
+                                }
                             } else {
                                 val frame by tool.nvimSession.state
                                     .collectAsStateWithLifecycle()
