@@ -1,13 +1,14 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.ngtv.neodroid.main.screens
-
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +24,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -333,36 +334,39 @@ private fun HomeSectionHeader(
     onAction: () -> Unit = {},
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = Spacing.lg, end = Spacing.sm, top = Spacing.lg, bottom = Spacing.xs),
+        modifier = Modifier.fillMaxWidth()
+            .padding(
+                start = Spacing.lg,
+                end = Spacing.sm,
+                top = Spacing.lg,
+                bottom = Spacing.xxs,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall,
         )
+
         if (count > 0) {
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-            ) {
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Spacer(Modifier.width(Spacing.sm))
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
+
+        Spacer(Modifier.weight(1f))
+
         if (actionLabel != null) {
-            TextButton(onClick = onAction) {
-                Text(
-                    text = actionLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
+            Text(
+                text = actionLabel,
+                modifier = Modifier
+                    .clickable(role = Role.Button, onClick = onAction)
+                    .padding(horizontal = Spacing.sm),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
