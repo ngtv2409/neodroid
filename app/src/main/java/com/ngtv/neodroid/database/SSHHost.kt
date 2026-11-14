@@ -59,6 +59,9 @@ interface SSHHostDao {
 
     @Query("UPDATE ssh_hosts SET server_signature = :fingerprint WHERE id = :id")
     suspend fun updateHostKey(id: Int, fingerprint: String)
+
+    @Query("UPDATE ssh_hosts SET server_signature = NULL WHERE id = :id")
+    suspend fun clearHostKey(id: Int)
 }
 
 class SSHHostRepository(private val dao: SSHHostDao) {
@@ -100,6 +103,10 @@ class SSHHostRepository(private val dao: SSHHostDao) {
 
     suspend fun updateHostKey(id: Int, fingerprint: String) {
         dao.updateHostKey(id, fingerprint)
+    }
+
+    suspend fun clearHostKey(id: Int) {
+        dao.clearHostKey(id)
     }
 }
 
@@ -186,10 +193,12 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
         }
     }
 
-    fun updateHostKey(hostId: Int, fingerprint: String) {
-        viewModelScope.launch {
-            repository.updateHostKey(hostId, fingerprint)
-        }
+    suspend fun updateHostKey(hostId: Int, fingerprint: String) {
+        repository.updateHostKey(hostId, fingerprint)
+    }
+
+    suspend fun clearHostKey(hostId: Int) {
+        repository.clearHostKey(hostId)
     }
 }
 

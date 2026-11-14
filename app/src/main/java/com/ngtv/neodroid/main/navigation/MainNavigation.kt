@@ -99,6 +99,12 @@ fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManage
                             }
                         }
                     },
+                    onTrustServer = { fingerprint ->
+                        viewModel.updateHostKey(host.id, fingerprint)
+                    },
+                    onDiscardHostKey = {
+                        viewModel.clearHostKey(host.id)
+                    },
                 )
             }
         }
