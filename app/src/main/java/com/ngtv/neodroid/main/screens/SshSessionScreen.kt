@@ -194,18 +194,13 @@ fun SshSessionScreen(session: WorkspaceSession) {
                 ) { page ->
                     when (val tool = session.tools.getOrNull(page)) {
                         is NvimTool -> {
-                            if (tool.connectionFailure != null) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(Spacing.lg),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = "Error: ${tool.connectionFailure}",
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                }
+                            val failure by tool.nvimSession.failure
+                                .collectAsStateWithLifecycle()
+
+                            if (failure != null) {
+                                errorMessage = failure?.message
+                                    ?: "Neovim session ended"
+                                closeTool(tool)
                             } else {
                                 val frame by tool.nvimSession.state
                                     .collectAsStateWithLifecycle()

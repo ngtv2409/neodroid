@@ -6,6 +6,7 @@ import com.ngtv.neodroid.core.events.NvimUiEvent
 import com.ngtv.neodroid.core.events.dispatchRedrawEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,7 +30,6 @@ import java.io.OutputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration
 
 class NvimException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
@@ -72,12 +72,18 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
     Closeable {
 
     private val closed = AtomicBoolean(false)
-    private val failureRef = AtomicReference<Throwable?>(null)
     private val _failure = MutableStateFlow<Throwable?>(null)
     val failure: StateFlow<Throwable?> = _failure.asStateFlow()
 
     private val clientJob = SupervisorJob(parentScope.coroutineContext[Job])
-    val scope = CoroutineScope(parentScope.coroutineContext + clientJob)
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        if (throwable !is CancellationException) {
+            failConnection(
+                NvimConnectionException("Neovim background task failed", throwable),
+            )
+        }
+    }
+    val scope = CoroutineScope(parentScope.coroutineContext + clientJob + exceptionHandler)
 
     val inbound = Channel<NvimNotification>(capacity = 256)
     private val outbound = Channel<RpcMessage>(capacity = 64)
@@ -164,16 +170,18 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
     }
 
     private fun failConnection(cause: Throwable) {
-        val actual = failureRef.compareAndExchange(null, cause) ?: cause
-        _failure.value = actual
-        closed.set(true)
+        // The first terminal transition wins. A concurrent close()/failure must not
+        // resurrect the connection or report an error after an intentional shutdown.
+        if (!closed.compareAndSet(false, true)) return
 
-        pending.values.forEach { it.completeExceptionally(actual) }
+        _failure.value = cause
+
+        pending.values.forEach { it.completeExceptionally(cause) }
         pending.clear()
 
         requests.close()
         outbound.close()
-        inbound.close(actual)
+        inbound.close(cause)
         clientJob.cancel()
     }
 
@@ -185,7 +193,10 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
                         unpacker.unpackRpcMessage()
                     } catch (e: RpcIOException) {
                         if (closed.get()) return
-                        throw NvimConnectionException("input stream closed or EOF", e)
+                        throw NvimConnectionException(
+                            "Neovim exited or the connection was closed",
+                            e,
+                        )
                     } catch (e: RpcFormatException) {
                         throw NvimConnectionException("malformed RPC message", e)
                     }
@@ -222,29 +233,35 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
     }
 
     private suspend fun requestLoop() {
-        for (request in requests) {
-            val reply = try {
-                requestHandler?.handle(request)
-                    ?: RpcReply.Error(0L, "unsupported client request: ${request.method}")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: NvimAPIException) {
-                RpcReply.Error(e.error.errorType, e.message ?: "Neovim API error")
-            } catch (e: Exception) {
-                RpcReply.Error(0L, e.message ?: e.toString())
+        try {
+            for (request in requests) {
+                val reply = try {
+                    requestHandler?.handle(request)
+                        ?: RpcReply.Error(0L, "unsupported client request: ${request.method}")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: NvimAPIException) {
+                    RpcReply.Error(e.error.errorType, e.message ?: "Neovim API error")
+                } catch (e: Exception) {
+                    RpcReply.Error(0L, e.message ?: e.toString())
+                }
+
+                outbound.send(
+                    when (reply) {
+                        is RpcReply.Result -> RpcResponse(request.msgid, null, reply.value)
+
+                        is RpcReply.Error -> RpcResponse(
+                            request.msgid,
+                            listOf(reply.type, reply.message),
+                            null,
+                        )
+                    },
+                )
             }
-
-            outbound.send(
-                when (reply) {
-                    is RpcReply.Result -> RpcResponse(request.msgid, null, reply.value)
-
-                    is RpcReply.Error -> RpcResponse(
-                        request.msgid,
-                        listOf(reply.type, reply.message),
-                        null,
-                    )
-                },
-            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failConnection(NvimConnectionException("Neovim request loop failed", e))
         }
     }
 

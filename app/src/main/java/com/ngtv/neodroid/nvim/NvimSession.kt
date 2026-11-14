@@ -7,6 +7,7 @@ import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimNotification
 import com.ngtv.neodroid.core.events.NvimUiEvent
 import com.ngtv.neodroid.perf.NvimPerf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -20,34 +21,55 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
     private val nvimActor = NvimStateActor()
     val state = nvimActor.state
 
+    private val _failure = MutableStateFlow<Throwable?>(null)
+    val failure = _failure.asStateFlow()
+
+    private fun recordFailure(cause: Throwable) {
+        _failure.compareAndSet(null, cause)
+    }
+
     private val readerJob: Job = nvim.scope.launch {
-        for (notification in nvim.inbound) {
-            if (notification is NvimNotification.Redraw) {
-                val event = notification.event
-                if (event is NvimUiEvent.Flush) {
-                    NvimPerf.measure("actor.flush") {
-                        nvimActor.apply(event)
-                    }
-                    NvimPerf.markFlush()
-                } else {
-                    NvimPerf.measure("actor.apply") {
-                        nvimActor.apply(event)
+        try {
+            for (notification in nvim.inbound) {
+                if (notification is NvimNotification.Redraw) {
+                    val event = notification.event
+                    if (event is NvimUiEvent.Flush) {
+                        NvimPerf.measure("actor.flush") {
+                            nvimActor.apply(event)
+                        }
+                        NvimPerf.markFlush()
+                    } else {
+                        NvimPerf.measure("actor.apply") {
+                            nvimActor.apply(event)
+                        }
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            recordFailure(e)
+        } finally {
+            nvim.failure.value?.let(::recordFailure)
         }
     }
 
     private val inputQueue = Channel<String>(Channel.UNLIMITED)
 
     private val inputJob: Job = nvim.scope.launch(Dispatchers.IO) {
-        for (keys in inputQueue) {
-            val batch = StringBuilder(keys)
-            while (true) {
-                val next = inputQueue.tryReceive().getOrNull() ?: break
-                batch.append(next)
+        try {
+            for (keys in inputQueue) {
+                val batch = StringBuilder(keys)
+                while (true) {
+                    val next = inputQueue.tryReceive().getOrNull() ?: break
+                    batch.append(next)
+                }
+                nvim.notify("nvim_input", listOf(batch.toString()))
             }
-            nvim.notify("nvim_input", listOf(batch.toString()))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            recordFailure(e)
         }
     }
 
@@ -69,7 +91,15 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
 
         currentWidth = safeWidth
         currentHeight = safeHeight
-        nvim.ui_try_resize(safeWidth, safeHeight)
+        try {
+            nvim.ui_try_resize(safeWidth, safeHeight)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Resizes are triggered from composition; never let a closed transport
+            // turn an expected shutdown into a crash.
+            recordFailure(e)
+        }
     }
 
     companion object {
