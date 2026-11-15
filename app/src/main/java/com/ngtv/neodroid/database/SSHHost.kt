@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -16,7 +18,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-@Entity(tableName = "ssh_hosts")
+@Entity(
+    tableName = "ssh_hosts",
+    foreignKeys = [
+        ForeignKey(
+            entity = AuthKeyEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["auth_key_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+    indices = [Index("auth_key_id")],
+)
 data class SSHHostEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
@@ -27,6 +40,8 @@ data class SSHHostEntity(
     val server_signature: String?,
     val username: String,
     val last_connected_at: Long? = null,
+    /** Optional authentication key used instead of a password. */
+    val auth_key_id: Int? = null,
     /* ... TODO: add necessary fields */
 )
 
