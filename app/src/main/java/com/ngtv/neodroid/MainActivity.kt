@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.ngtv.neodroid.database.AppDatabase
@@ -31,6 +32,7 @@ import com.ngtv.neodroid.database.SSHHostRepository
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.database.SSHHostViewModelFactory
 import com.ngtv.neodroid.main.navigation.MainNavigation
+import com.ngtv.neodroid.security.KeystoreStatus
 import com.ngtv.neodroid.service.SshManagerService
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.ui.theme.NeodroidTheme
@@ -116,7 +118,16 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     val sessionManager = sshService?.sessionManager
-                    if (isBound && sessionManager != null) {
+                    val keystoreStatus by
+                        (application as NeodroidApplication)
+                            .keystoreKeyManager
+                            .status
+                            .collectAsStateWithLifecycle()
+
+                    val keystoreInitialized =
+                        keystoreStatus !is KeystoreStatus.NotInitialized
+
+                    if (isBound && sessionManager != null && keystoreInitialized) {
                         MainNavigation(sshHostViewModel, sessionManager)
                     } else {
                         Box(
