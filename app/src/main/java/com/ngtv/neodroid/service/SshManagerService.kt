@@ -9,7 +9,7 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.ngtv.neodroid.database.AppDatabase
+import com.ngtv.neodroid.NeodroidApplication
 import com.ngtv.neodroid.database.SSHHostRepository
 import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshConnectionHistory
@@ -27,7 +27,6 @@ class SshManagerService : Service() {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private lateinit var database: AppDatabase
     private lateinit var repository: SSHHostRepository
 
     lateinit var sessionManager: SshSessionManager
@@ -43,8 +42,7 @@ class SshManagerService : Service() {
     override fun onCreate() {
         super.onCreate()
 
-        database = AppDatabase.getInstance(applicationContext)
-        repository = SSHHostRepository(database.SSHHostDao())
+        repository = (application as NeodroidApplication).container.sshHostRepository
 
         sessionManager =
             SshSessionManager(

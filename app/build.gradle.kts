@@ -64,6 +64,7 @@ dependencies {
     implementation("com.hierynomus:sshj:0.40.0")
     implementation("org.bouncycastle:bcprov-jdk18on:1.80.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.navigation:navigation-compose:2.10.2")

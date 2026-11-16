@@ -1,7 +1,6 @@
 package com.ngtv.neodroid.database
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.room.ColumnInfo
 import androidx.room.Dao
@@ -206,20 +205,5 @@ class AuthKeyViewModel(private val repository: AuthKeyRepository) : ViewModel() 
         require(encryptedPrivateKey.isNotBlank()) { "Private key cannot be blank" }
         require(publicKey.isNotBlank()) { "Public key cannot be blank" }
         require(encryptedDek.isNotBlank()) { "Encrypted data key cannot be blank" }
-    }
-}
-
-class AuthKeyViewModelFactory(private val repository: AuthKeyRepository) :
-    ViewModelProvider.Factory {
-
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(AuthKeyViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return AuthKeyViewModel(repository) as T
-        }
-
-        throw IllegalArgumentException(
-            "Unknown ViewModel class: ${modelClass.name}",
-        )
     }
 }

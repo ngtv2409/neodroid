@@ -1,7 +1,6 @@
 package com.ngtv.neodroid.database
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.room.Dao
 import androidx.room.Delete
@@ -214,20 +213,5 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
 
     suspend fun clearHostKey(hostId: Int) {
         repository.clearHostKey(hostId)
-    }
-}
-
-class SSHHostViewModelFactory(private val repository: SSHHostRepository) :
-    ViewModelProvider.Factory {
-
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(SSHHostViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return SSHHostViewModel(repository) as T
-        }
-
-        throw IllegalArgumentException(
-            "Unknown ViewModel class: ${modelClass.name}",
-        )
     }
 }

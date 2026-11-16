@@ -10,6 +10,9 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
 
 class NeodroidApplication : Application() {
+    lateinit var container: AppContainer
+        private set
+
     lateinit var keystoreKeyManager: KeystoreKeyManager
         private set
 
@@ -17,6 +20,7 @@ class NeodroidApplication : Application() {
         super.onCreate()
         setupBouncyCastle()
 
+        container = AppContainer(this)
         keystoreKeyManager = KeystoreKeyManager.getInstance(this)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             keystoreKeyManager.initialize()

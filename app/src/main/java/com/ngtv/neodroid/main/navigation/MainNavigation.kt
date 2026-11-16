@@ -9,9 +9,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.ngtv.neodroid.AppContainer
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.main.screens.AddHostScreen
 import com.ngtv.neodroid.main.screens.ConnectionsScreen
@@ -25,7 +27,8 @@ import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainNavigation(viewModel: SSHHostViewModel, sessionManager: SshSessionManager) {
+fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
+    val viewModel: SSHHostViewModel = viewModel(factory = container.sshHostViewModelFactory)
     val navController = rememberNavController()
 
     NavHost(
