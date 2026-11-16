@@ -1,10 +1,15 @@
 package com.ngtv.neodroid.main.screens
 
 import androidx.compose.runtime.Composable
+import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
 
 @Composable
-fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> Unit) {
+fun AddHostScreen(
+    onSubmit: (SSHHostViewModel.InputModel) -> Unit,
+    back: () -> Unit,
+    authKeys: List<AuthKeyEntity> = emptyList(),
+) {
     HostEditorScreen(
         host = null,
         onBack = back,
@@ -12,5 +17,6 @@ fun AddHostScreen(onSubmit: (SSHHostViewModel.InputModel) -> Unit, back: () -> U
             onSubmit(input)
             back()
         },
+        authKeys = authKeys,
     )
 }

@@ -33,6 +33,7 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
     val viewModel: SSHHostViewModel = viewModel(factory = container.sshHostViewModelFactory)
     val authKeyViewModel: AuthKeyViewModel =
         viewModel(factory = container.authKeyViewModelFactory)
+    val authKeys by authKeyViewModel.keys.collectAsStateWithLifecycle()
     val navController = rememberNavController()
 
     NavHost(
@@ -55,6 +56,7 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                 onOpenAuthKeys = {
                     navController.navigate("auth-keys")
                 },
+                authKeys = authKeys,
             )
         }
         composable("auth-keys") {
@@ -77,7 +79,7 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                 viewModel.addHost(host)
             }, back = {
                 navController.popBackStack()
-            })
+            }, authKeys = authKeys)
         }
         composable("hosts/details/{hostId}") { backStackEntry ->
             val hostId = backStackEntry.arguments?.getString("hostId")?.toInt()
@@ -91,6 +93,7 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                     onConnect = {
                         navController.navigate("workspace/$hostId")
                     },
+                    authKeys = authKeys,
                 )
             }
         }

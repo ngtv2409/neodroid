@@ -1,5 +1,6 @@
 package com.ngtv.neodroid.main.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -33,8 +35,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
+import com.ngtv.neodroid.security.AuthKeyAlgorithm
 import com.ngtv.neodroid.ui.theme.Spacing
 
 @Composable
@@ -43,6 +47,7 @@ fun DetailHostScreen(
     hostId: Int,
     onBack: () -> Unit,
     onConnect: () -> Unit,
+    authKeys: List<AuthKeyEntity> = emptyList(),
 ) {
     val hostHandler by viewModel.getHostById(
         hostId,
@@ -53,6 +58,7 @@ fun DetailHostScreen(
         host = host,
         onBack = onBack,
         onConnect = onConnect,
+        authKeys = authKeys,
         onSave = { input ->
             viewModel.updateHost(
                 host.copy(
@@ -61,6 +67,7 @@ fun DetailHostScreen(
                     port = input.port,
                     server_signature = input.serverSignature,
                     username = input.username,
+                    auth_key_id = input.authKeyId,
                 ),
             )
         },
@@ -73,6 +80,7 @@ fun HostDetailPane(
     onBack: () -> Unit,
     onConnect: () -> Unit,
     onSave: (SSHHostViewModel.InputModel) -> Unit,
+    authKeys: List<AuthKeyEntity> = emptyList(),
 ) {
     var isEditing by rememberSaveable(host.id) { mutableStateOf(false) }
 
@@ -85,6 +93,7 @@ fun HostDetailPane(
                 isEditing = false
             },
             onConnect = onConnect,
+            authKeys = authKeys,
         )
     } else {
         HostDetailScreen(
@@ -92,6 +101,7 @@ fun HostDetailPane(
             onBack = onBack,
             onEdit = { isEditing = true },
             onConnect = onConnect,
+            authKeys = authKeys,
         )
     }
 }
@@ -103,7 +113,10 @@ private fun HostDetailScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onConnect: () -> Unit,
+    authKeys: List<AuthKeyEntity>,
 ) {
+    val authKey = authKeys.firstOrNull { it.id == host.auth_key_id }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -184,6 +197,28 @@ private fun HostDetailScreen(
                 "Server signature",
                 host.server_signature ?: "Not trusted yet",
             )
+            HostDetailSectionLabel("Authentication")
+            if (authKey == null) {
+                Text(
+                    text = "Password only",
+                    modifier = Modifier.width(110.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                HostDetailRow(
+                    "Key",
+                    authKey.displayName.ifBlank { "unnamed" },
+                )
+                HostDetailRow(
+                    "Type",
+                    AuthKeyAlgorithm.displayName(authKey.algorithm),
+                )
+                HostDetailRow(
+                    "Fingerprint",
+                    authKeyFingerprint(authKey) ?: "Unavailable",
+                )
+            }
         }
     }
 }

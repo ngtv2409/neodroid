@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.sharedComponents.ValidatedTextField
@@ -63,12 +64,14 @@ fun HostEditorScreen(
     onBack: () -> Unit,
     onSubmit: (SSHHostViewModel.InputModel) -> Unit,
     onConnect: (() -> Unit)? = null,
+    authKeys: List<AuthKeyEntity> = emptyList(),
 ) {
     var serverName by remember(host?.id) { mutableStateOf(host?.server_name ?: "") }
     var hostname by remember(host?.id) { mutableStateOf(host?.hostname ?: "") }
     var portStr by remember(host?.id) { mutableStateOf(host?.port?.toString() ?: "22") }
     var serverSignature by remember(host?.id) { mutableStateOf(host?.server_signature ?: "") }
     var username by remember(host?.id) { mutableStateOf(host?.username ?: "") }
+    var authKeyId by remember(host?.id) { mutableStateOf(host?.auth_key_id) }
 
     val canSubmit = validateServerName(serverName) == null &&
         validateHostname(hostname) == null &&
@@ -80,7 +83,8 @@ fun HostEditorScreen(
         hostname != host.hostname ||
         portStr != host.port.toString() ||
         username != host.username ||
-        serverSignature != (host.server_signature ?: "")
+        serverSignature != (host.server_signature ?: "") ||
+        authKeyId != host.auth_key_id
 
     val submit = {
         onSubmit(
@@ -90,6 +94,7 @@ fun HostEditorScreen(
                 port = portStr.trim().toInt(),
                 serverSignature = serverSignature.trim().ifBlank { null },
                 username = username.trim(),
+                authKeyId = authKeyId,
             ),
         )
     }
@@ -193,6 +198,13 @@ fun HostEditorScreen(
             }
 
             SectionLabel("Security", modifier = Modifier.padding(top = Spacing.sm))
+            SectionLabel("Authentication key")
+            AuthKeySelector(
+                keys = authKeys,
+                selectedKeyId = authKeyId,
+                onSelect = { authKeyId = it },
+            )
+            SectionLabel("Server signature")
             ValidatedTextField(
                 value = serverSignature,
                 onValueChange = { serverSignature = it },

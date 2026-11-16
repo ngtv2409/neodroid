@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.sharedComponents.ActionMenuItem
@@ -75,6 +76,7 @@ fun HomeScreen(
     onOpenConnection: (String) -> Unit,
     onShowAllConnections: () -> Unit,
     onOpenAuthKeys: () -> Unit,
+    authKeys: List<AuthKeyEntity> = emptyList(),
 ) {
     val hosts by viewModel.hosts.collectAsStateWithLifecycle()
     val recentHosts by viewModel.recentHosts.collectAsStateWithLifecycle()
@@ -97,6 +99,7 @@ fun HomeScreen(
                 onShowAllConnections = onShowAllConnections,
                 onOpenAuthKeys = onOpenAuthKeys,
                 onDeleteHost = { hostPendingDeletion = it },
+                authKeys = authKeys,
             )
         } else {
             CompactHomeScreen(
@@ -182,6 +185,7 @@ private fun SplitHomeScreen(
     onShowAllConnections: () -> Unit,
     onOpenAuthKeys: () -> Unit,
     onDeleteHost: (SSHHostEntity) -> Unit,
+    authKeys: List<AuthKeyEntity>,
 ) {
     var selectedHostId by rememberSaveable { mutableStateOf<Int?>(null) }
     var isAdding by rememberSaveable { mutableStateOf(false) }
@@ -234,6 +238,7 @@ private fun SplitHomeScreen(
                             viewModel.addHost(input)
                             isAdding = false
                         },
+                        authKeys = authKeys,
                     )
                 }
 
@@ -249,10 +254,12 @@ private fun SplitHomeScreen(
                                     port = input.port,
                                     server_signature = input.serverSignature,
                                     username = input.username,
+                                    auth_key_id = input.authKeyId,
                                 ),
                             )
                         },
                         onConnect = { onConnectHost(selectedHost.id) },
+                        authKeys = authKeys,
                     )
                 }
 

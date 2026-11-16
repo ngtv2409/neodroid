@@ -91,6 +91,7 @@ class SSHHostRepository(private val dao: SSHHostDao) {
         port: Int,
         serverSignature: String?,
         username: String,
+        authKeyId: Int? = null,
     ) {
         dao.insert(
             SSHHostEntity(
@@ -99,6 +100,7 @@ class SSHHostRepository(private val dao: SSHHostDao) {
                 port = port,
                 server_signature = serverSignature,
                 username = username,
+                auth_key_id = authKeyId,
             ),
         )
     }
@@ -149,6 +151,7 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
         val port: Int,
         val serverSignature: String?,
         val username: String,
+        val authKeyId: Int? = null,
     )
 
     fun addHost(
@@ -157,6 +160,7 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
         port: Int,
         serverSignature: String?,
         username: String,
+        authKeyId: Int? = null,
     ) {
         require(serverName.isNotBlank()) { "Host name cannot be blank" }
         require(hostname.isNotBlank()) { "Host name cannot be blank" }
@@ -170,6 +174,7 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
                 port = port,
                 serverSignature = serverSignature,
                 username = username,
+                authKeyId = authKeyId,
             )
         }
     }
@@ -181,6 +186,7 @@ class SSHHostViewModel(private val repository: SSHHostRepository) : ViewModel() 
             port = input.port,
             serverSignature = input.serverSignature,
             username = input.username,
+            authKeyId = input.authKeyId,
         )
     }
 
