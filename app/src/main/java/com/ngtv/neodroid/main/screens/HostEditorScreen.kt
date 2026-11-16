@@ -56,13 +56,6 @@ private fun validatePort(value: String): String? {
 private fun validateUsername(value: String): String? =
     if (value.isBlank()) "Username is required" else null
 
-/**
- * Shared editor for creating and editing SSH hosts.
- *
- * Add and edit remain separate destinations because they have different intents
- * (creation vs. connecting to an existing host), but they share the same layout so
- * both flows stay consistent.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HostEditorScreen(
@@ -141,19 +134,12 @@ fun HostEditorScreen(
                             Text("Add host")
                         }
                     } else {
-                        OutlinedButton(
+                        Button(
                             modifier = Modifier.weight(1f),
                             enabled = canSubmit && isChanged,
                             onClick = submit,
                         ) {
                             Text("Save")
-                        }
-                        Button(
-                            modifier = Modifier.weight(1f),
-                            enabled = canSubmit && !isChanged && onConnect != null,
-                            onClick = { onConnect?.invoke() },
-                        ) {
-                            Text("Connect")
                         }
                     }
                 }

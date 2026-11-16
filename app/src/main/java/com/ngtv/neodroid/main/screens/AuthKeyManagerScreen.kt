@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -128,6 +129,11 @@ fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
                             AuthKeyDetailScreen(
                                 key = selectedKey,
                                 onBack = { selectedKeyId = null },
+                                onRename = { displayName ->
+                                    viewModel.updateKey(
+                                        selectedKey.copy(displayName = displayName),
+                                    )
+                                },
                             )
                         }
 
@@ -151,6 +157,11 @@ fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
                     AuthKeyDetailScreen(
                         key = selectedKey,
                         onBack = { selectedKeyId = null },
+                        onRename = { displayName ->
+                            viewModel.updateKey(
+                                selectedKey.copy(displayName = displayName),
+                            )
+                        },
                     )
                 }
 
@@ -193,7 +204,12 @@ fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun AuthKeyTopBar(title: String, onBack: () -> Unit, onAdd: (() -> Unit)? = null) {
+private fun AuthKeyTopBar(
+    title: String,
+    onBack: () -> Unit,
+    onAdd: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
+) {
     TopAppBar(
         colors = authKeyTopBarColors(),
         navigationIcon = {
@@ -208,6 +224,19 @@ private fun AuthKeyTopBar(title: String, onBack: () -> Unit, onAdd: (() -> Unit)
             Text(title)
         },
         actions = {
+            if (onEdit != null) {
+                TextButton(
+                    onClick = onEdit,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Edit auth key name"
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
+                    Text("Edit")
+                }
+            }
             if (onAdd != null) {
                 IconButton(
                     onClick = onAdd,
@@ -474,14 +503,23 @@ private fun AuthKeyFormLabel(text: String) {
 }
 
 @Composable
-private fun AuthKeyDetailScreen(key: AuthKeyEntity, onBack: () -> Unit) {
+private fun AuthKeyDetailScreen(
+    key: AuthKeyEntity,
+    onBack: () -> Unit,
+    onRename: (String) -> Unit,
+) {
     val fingerprint = remember(key.publicKey) {
         sshPublicKeyFingerprint(key.publicKey)
     }
+    var showRenameDialog by remember(key.id) { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            AuthKeyTopBar(title = "Auth key", onBack = onBack)
+            AuthKeyTopBar(
+                title = "Auth key",
+                onBack = onBack,
+                onEdit = { showRenameDialog = true },
+            )
         },
     ) { innerPadding ->
         Column(
@@ -539,6 +577,51 @@ private fun AuthKeyDetailScreen(key: AuthKeyEntity, onBack: () -> Unit) {
             )
         }
     }
+
+    if (showRenameDialog) {
+        RenameAuthKeyDialog(
+            key = key,
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { displayName ->
+                onRename(displayName)
+                showRenameDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun RenameAuthKeyDialog(
+    key: AuthKeyEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var displayName by remember(key.id) { mutableStateOf(key.displayName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Edit display name")
+        },
+        text = {
+            ValidatedTextField(
+                value = displayName,
+                onValueChange = { displayName = it },
+                label = "Display name",
+                maxLength = 100,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(displayName.trim()) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Composable

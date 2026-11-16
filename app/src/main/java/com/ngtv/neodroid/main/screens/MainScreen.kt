@@ -238,10 +238,10 @@ private fun SplitHomeScreen(
                 }
 
                 selectedHost != null -> {
-                    HostEditorScreen(
+                    HostDetailPane(
                         host = selectedHost,
                         onBack = { selectedHostId = null },
-                        onSubmit = { input ->
+                        onSave = { input ->
                             viewModel.updateHost(
                                 selectedHost.copy(
                                     server_name = input.serverName,
