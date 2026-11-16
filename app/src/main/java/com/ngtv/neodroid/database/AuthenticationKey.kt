@@ -10,11 +10,18 @@ import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Update
+import com.ngtv.neodroid.security.AuthKeyAlgorithm
+import com.ngtv.neodroid.security.AuthKeyGenerator
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Entity(tableName = "auth_keys")
 data class AuthKeyEntity(
@@ -55,7 +62,6 @@ interface AuthKeyDao {
     /** use newest of created at and used at */
     @Query(
         "SELECT * FROM auth_keys " +
-            "WHERE last_used_at IS NOT NULL " +
             "ORDER BY COALESCE(last_used_at, created_at) DESC, id DESC",
     )
     fun getRecent(): Flow<List<AuthKeyEntity>>
@@ -114,7 +120,10 @@ class AuthKeyRepository(private val dao: AuthKeyDao) {
     }
 }
 
-class AuthKeyViewModel(private val repository: AuthKeyRepository) : ViewModel() {
+class AuthKeyViewModel(
+    private val repository: AuthKeyRepository,
+    private val keyGenerator: AuthKeyGenerator,
+) : ViewModel() {
 
     val keys: StateFlow<List<AuthKeyEntity>> =
         repository.getAllKeys().stateIn(
@@ -130,7 +139,41 @@ class AuthKeyViewModel(private val repository: AuthKeyRepository) : ViewModel() 
             initialValue = emptyList(),
         )
 
+    private val _creationState = MutableStateFlow<AuthKeyCreationState>(AuthKeyCreationState.Idle)
+    val creationState: StateFlow<AuthKeyCreationState> = _creationState.asStateFlow()
+
     fun getKeyById(id: Int): Flow<AuthKeyEntity?> = repository.getById(id)
+
+    fun createKey(algorithm: AuthKeyAlgorithm, displayName: String) {
+        if (_creationState.value is AuthKeyCreationState.Creating) return
+
+        _creationState.value = AuthKeyCreationState.Creating
+        viewModelScope.launch {
+            try {
+                val generated = withContext(Dispatchers.Default) {
+                    keyGenerator.generate(algorithm)
+                }
+                repository.addKey(
+                    algorithm = generated.algorithm.storageValue,
+                    displayName = displayName.trim(),
+                    encryptedPrivateKey = generated.encryptedPrivateKey,
+                    publicKey = generated.publicKey,
+                    encryptedDek = generated.encryptedDek,
+                )
+                _creationState.value = AuthKeyCreationState.Created
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _creationState.value = AuthKeyCreationState.Failed(
+                    e.message ?: "Could not create key",
+                )
+            }
+        }
+    }
+
+    fun resetCreationState() {
+        _creationState.value = AuthKeyCreationState.Idle
+    }
 
     data class InputModel(
         val algorithm: String,
@@ -206,4 +249,14 @@ class AuthKeyViewModel(private val repository: AuthKeyRepository) : ViewModel() 
         require(publicKey.isNotBlank()) { "Public key cannot be blank" }
         require(encryptedDek.isNotBlank()) { "Encrypted data key cannot be blank" }
     }
+}
+
+sealed interface AuthKeyCreationState {
+    data object Idle : AuthKeyCreationState
+
+    data object Creating : AuthKeyCreationState
+
+    data object Created : AuthKeyCreationState
+
+    data class Failed(val message: String) : AuthKeyCreationState
 }

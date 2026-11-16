@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -38,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +48,7 @@ import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.sharedComponents.ActionMenuItem
 import com.ngtv.neodroid.sharedComponents.CompactListItem
+import com.ngtv.neodroid.sharedComponents.FakeIcon
 import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.ui.theme.Spacing
@@ -70,6 +74,7 @@ fun HomeScreen(
     onConnectHost: (Int) -> Unit,
     onOpenConnection: (String) -> Unit,
     onShowAllConnections: () -> Unit,
+    onOpenAuthKeys: () -> Unit,
 ) {
     val hosts by viewModel.hosts.collectAsStateWithLifecycle()
     val recentHosts by viewModel.recentHosts.collectAsStateWithLifecycle()
@@ -90,6 +95,7 @@ fun HomeScreen(
                 onConnectHost = onConnectHost,
                 onOpenConnection = onOpenConnection,
                 onShowAllConnections = onShowAllConnections,
+                onOpenAuthKeys = onOpenAuthKeys,
                 onDeleteHost = { hostPendingDeletion = it },
             )
         } else {
@@ -102,6 +108,7 @@ fun HomeScreen(
                 onConnectHost = onConnectHost,
                 onOpenConnection = onOpenConnection,
                 onShowAllConnections = onShowAllConnections,
+                onOpenAuthKeys = onOpenAuthKeys,
                 onDeleteHost = { hostPendingDeletion = it },
             )
         }
@@ -129,6 +136,7 @@ private fun CompactHomeScreen(
     onConnectHost: (Int) -> Unit,
     onOpenConnection: (String) -> Unit,
     onShowAllConnections: () -> Unit,
+    onOpenAuthKeys: () -> Unit,
     onDeleteHost: (SSHHostEntity) -> Unit,
 ) {
     Scaffold(
@@ -137,6 +145,11 @@ private fun CompactHomeScreen(
                 colors = homeTopBarColors(),
                 title = {
                     Text("Neodroid")
+                },
+                actions = {
+                    IconButton(onClick = onOpenAuthKeys) {
+                        FakeIcon()
+                    }
                 },
             )
         },
@@ -167,6 +180,7 @@ private fun SplitHomeScreen(
     onConnectHost: (Int) -> Unit,
     onOpenConnection: (String) -> Unit,
     onShowAllConnections: () -> Unit,
+    onOpenAuthKeys: () -> Unit,
     onDeleteHost: (SSHHostEntity) -> Unit,
 ) {
     var selectedHostId by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -182,6 +196,11 @@ private fun SplitHomeScreen(
                 colors = homeTopBarColors(),
                 title = {
                     Text("Neodroid")
+                },
+                actions = {
+                    IconButton(onClick = onOpenAuthKeys) {
+                        FakeIcon()
+                    }
                 },
             )
             HomeContent(

@@ -14,8 +14,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ngtv.neodroid.AppContainer
+import com.ngtv.neodroid.database.AuthKeyViewModel
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.main.screens.AddHostScreen
+import com.ngtv.neodroid.main.screens.AuthKeyManagerScreen
 import com.ngtv.neodroid.main.screens.ConnectionsScreen
 import com.ngtv.neodroid.main.screens.DetailHostScreen
 import com.ngtv.neodroid.main.screens.HomeScreen
@@ -29,6 +31,8 @@ import kotlinx.coroutines.CancellationException
 @Composable
 fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
     val viewModel: SSHHostViewModel = viewModel(factory = container.sshHostViewModelFactory)
+    val authKeyViewModel: AuthKeyViewModel =
+        viewModel(factory = container.authKeyViewModelFactory)
     val navController = rememberNavController()
 
     NavHost(
@@ -48,6 +52,15 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                 onShowAllConnections = {
                     navController.navigate("connections")
                 },
+                onOpenAuthKeys = {
+                    navController.navigate("auth-keys")
+                },
+            )
+        }
+        composable("auth-keys") {
+            AuthKeyManagerScreen(
+                viewModel = authKeyViewModel,
+                onBack = { navController.popBackStack() },
             )
         }
         composable("connections") {
