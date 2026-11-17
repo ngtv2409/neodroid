@@ -10,6 +10,7 @@ import com.ngtv.neodroid.database.AuthKeyViewModel
 import com.ngtv.neodroid.database.SSHHostRepository
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.security.AuthKeyGenerator
+import com.ngtv.neodroid.security.AuthKeyMaterial
 import com.ngtv.neodroid.security.KeystoreKeyManager
 
 class AppContainer(context: Context) {
@@ -19,6 +20,8 @@ class AppContainer(context: Context) {
     private val keystoreKeyManager = KeystoreKeyManager.getInstance(context)
 
     private val authKeyGenerator = AuthKeyGenerator(keystoreKeyManager)
+
+    val authKeyMaterial = AuthKeyMaterial(keystoreKeyManager)
 
     val sshHostRepository = SSHHostRepository(database.SSHHostDao())
 

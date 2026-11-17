@@ -1,5 +1,37 @@
 package com.ngtv.neodroid.sshUtils
 
+import net.schmizz.sshj.userauth.keyprovider.KeyProvider
+
+/**
+ * Authentication material selected by the user on the connect screen
+ */
+sealed interface SshAuth {
+    // The server doesnt need auth
+    data object None : SshAuth
+
+    data class Password(val password: String) : SshAuth
+
+    data class KeyboardInteractive(val password: String) : SshAuth
+
+    data class PublicKey(val keyProvider: KeyProvider) : SshAuth
+}
+
+/**
+ * The endpoint information needed to open an SSH transport before authenticating
+ */
+data class SshProbeConfig(
+    val hostname: String,
+    val port: Int,
+    val username: String,
+    val knownHostKeyFingerprint: String? = null,
+) {
+    init {
+        require(hostname.isNotBlank()) { "Host name cannot be blank" }
+        require(port in 1..65535) { "Port must be between 1 and 65535" }
+        require(username.isNotBlank()) { "Username cannot be blank" }
+    }
+}
+
 /**
  * Everything required to establish one SSH connection.
  */
@@ -9,7 +41,7 @@ data class SshConnectionConfig(
     val hostname: String,
     val port: Int,
     val username: String,
-    val password: String,
+    val auth: SshAuth,
     val knownHostKeyFingerprint: String? = null,
 ) {
     init {

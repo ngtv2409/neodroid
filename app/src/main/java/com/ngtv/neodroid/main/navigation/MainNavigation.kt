@@ -110,6 +110,8 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                 WorkspacePrepareClient(
                     host = host,
                     sessionManager = sessionManager,
+                    authKeyMaterial = container.authKeyMaterial,
+                    authKeys = authKeys,
                     onBack = { navController.popBackStack() },
                     onConnect = { connectionId ->
                         navController.navigate("workspace/session/$connectionId") {
@@ -117,6 +119,12 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                                 inclusive = false
                             }
                         }
+                    },
+                    onAuthKeyUsed = { keyId ->
+                        authKeyViewModel.markKeyUsed(keyId)
+                    },
+                    onOpenAuthKeys = {
+                        navController.navigate("auth-keys")
                     },
                     onTrustServer = { fingerprint ->
                         viewModel.updateHostKey(host.id, fingerprint)

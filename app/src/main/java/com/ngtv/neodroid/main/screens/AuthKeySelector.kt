@@ -35,6 +35,8 @@ fun AuthKeySelector(
     selectedKeyId: Int?,
     onSelect: (Int?) -> Unit,
     modifier: Modifier = Modifier,
+    noneLabel: String = "Password authentication",
+    noneDetail: String = "No key selected",
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedKey = keys.firstOrNull { it.id == selectedKeyId }
@@ -67,7 +69,7 @@ fun AuthKeySelector(
                         text = when {
                             !hasKeys -> "No auth keys available"
                             selectedKey != null -> authKeyDisplayName(selectedKey)
-                            else -> "Password authentication"
+                            else -> noneLabel
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (hasKeys) {
@@ -82,7 +84,7 @@ fun AuthKeySelector(
                         text = when {
                             !hasKeys -> "Create a key from Auth keys"
                             selectedKey != null -> authKeySummary(selectedKey)
-                            else -> "No key selected"
+                            else -> noneDetail
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -107,8 +109,8 @@ fun AuthKeySelector(
             modifier = Modifier.widthIn(min = 240.dp, max = 360.dp),
         ) {
             AuthKeyMenuItem(
-                label = "Password authentication",
-                detail = "No key selected",
+                label = noneLabel,
+                detail = noneDetail,
                 selected = selectedKeyId == null,
                 onClick = {
                     onSelect(null)

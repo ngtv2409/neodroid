@@ -64,10 +64,29 @@ class SshSessionManager(
             connection.workspaces.value.any { it.hasRunningTools }
     }
 
+    suspend fun probe(config: SshProbeConfig): SshConnectionProbe {
+        checkNotClosed()
+        return connector.probe(config)
+    }
+
     suspend fun connect(config: SshConnectionConfig): SshConnection {
         checkNotClosed()
 
         val result = connector.connect(config)
+        return registerConnection(config, result)
+    }
+
+    suspend fun connect(config: SshConnectionConfig, probe: SshConnectionProbe): SshConnection {
+        checkNotClosed()
+
+        val result = connector.connect(config, probe)
+        return registerConnection(config, result)
+    }
+
+    private suspend fun registerConnection(
+        config: SshConnectionConfig,
+        result: SshConnectResult,
+    ): SshConnection {
         val connection =
             SshConnection(
                 id = newConnectionId(config.hostId),
