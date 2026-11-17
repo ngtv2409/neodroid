@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -62,24 +63,28 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
         composable("auth-keys") {
             AuthKeyManagerScreen(
                 viewModel = authKeyViewModel,
-                onBack = { navController.popBackStack() },
+                onBack = dropUnlessResumed { navController.popBackStack() },
             )
         }
         composable("connections") {
             ConnectionsScreen(
                 sessionManager = sessionManager,
-                onBack = { navController.popBackStack() },
+                onBack = dropUnlessResumed { navController.popBackStack() },
                 onOpenConnection = { connectionId ->
                     navController.navigate("workspace/session/$connectionId")
                 },
             )
         }
         composable("hosts/new") {
-            AddHostScreen(onSubmit = { host: SSHHostViewModel.InputModel ->
-                viewModel.addHost(host)
-            }, back = {
-                navController.popBackStack()
-            }, authKeys = authKeys)
+            AddHostScreen(
+                onSubmit = { host: SSHHostViewModel.InputModel ->
+                    viewModel.addHost(host)
+                },
+                back = dropUnlessResumed {
+                    navController.popBackStack()
+                },
+                authKeys = authKeys,
+            )
         }
         composable("hosts/details/{hostId}") { backStackEntry ->
             val hostId = backStackEntry.arguments?.getString("hostId")?.toInt()
@@ -89,7 +94,7 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                 DetailHostScreen(
                     viewModel = viewModel,
                     hostId = hostId,
-                    onBack = { navController.popBackStack() },
+                    onBack = dropUnlessResumed { navController.popBackStack() },
                     onConnect = {
                         navController.navigate("workspace/$hostId")
                     },
@@ -112,7 +117,7 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                     sessionManager = sessionManager,
                     authKeyMaterial = container.authKeyMaterial,
                     authKeys = authKeys,
-                    onBack = { navController.popBackStack() },
+                    onBack = dropUnlessResumed { navController.popBackStack() },
                     onConnect = { connectionId ->
                         navController.navigate("workspace/session/$connectionId") {
                             popUpTo("home") {
@@ -143,7 +148,7 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                 WorkspaceSessionDestination(
                     sessionManager = sessionManager,
                     connectionId = connectionId,
-                    onBack = {
+                    onBack = dropUnlessResumed {
                         navController.popBackStack("home", inclusive = false)
                     },
                     onMissing = { navController.popBackStack() },
