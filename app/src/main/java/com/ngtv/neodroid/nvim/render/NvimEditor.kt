@@ -21,8 +21,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -34,6 +37,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.Font
@@ -44,7 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ngtv.neodroid.R
-import com.ngtv.neodroid.nvim.CursorState
+import com.ngtv.neodroid.core.events.CursorShape
+import com.ngtv.neodroid.core.events.ModeProperty
 import com.ngtv.neodroid.nvim.NvimFrame
 import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.delay
@@ -142,9 +148,11 @@ fun NvimEditor(
                     cellHeight = cellHeight,
                 )
                 NvimCursorOverlay(
-                    cursor = frame.cursor,
+                    frame = frame,
                     cellWidth = cellWidth,
                     cellHeight = cellHeight,
+                    textMeasurer = textMeasurer,
+                    baseTextStyle = baseTextStyle,
                 )
             }
         }
@@ -230,26 +238,154 @@ private fun NvimTextSegment(
     }
 }
 
-@Composable
-private fun NvimCursorOverlay(cursor: CursorState, cellWidth: Dp, cellHeight: Dp) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val width = cellWidth.toPx()
-        val height = cellHeight.toPx()
+private data class CursorVisual(
+    val shape: CursorShape,
+    val percentage: Int,
+    val fill: Color,
+    val textColor: Color,
+    val textStyle: SpanStyle,
+    val glyph: String?,
+)
 
-        // TODO: handle cursor style properly and invert text under the cursor.
-        drawRect(
-            color = Color.Black,
-            topLeft = Offset(
-                x = cursor.col * width,
-                y = cursor.row * height,
+@Composable
+private fun NvimCursorOverlay(
+    frame: NvimFrame,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    textMeasurer: TextMeasurer,
+    baseTextStyle: TextStyle,
+) {
+    val visual = remember(frame) { frame.cursorVisual() }
+    val visible = rememberCursorVisible(frame.cursorMode)
+
+    val glyphLayout = remember(visual, textMeasurer, baseTextStyle) {
+        val glyph = visual.glyph ?: return@remember null
+        textMeasurer.measure(
+            text = AnnotatedString(glyph),
+            style = baseTextStyle.merge(
+                visual.textStyle.copy(
+                    color = visual.textColor,
+                    background = Color.Unspecified,
+                ),
             ),
-            size = Size(
-                width = width / 3,
-                height = height,
-            ),
+            softWrap = false,
+            maxLines = 1,
         )
     }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (!visible) return@Canvas
+
+        val width = cellWidth.toPx()
+        val height = cellHeight.toPx()
+        val x = frame.cursor.col * width
+        val y = frame.cursor.row * height
+        val fraction = visual.percentage / 100f
+
+        when (visual.shape) {
+            CursorShape.BLOCK -> {
+                drawRect(
+                    color = visual.fill,
+                    topLeft = Offset(x, y),
+                    size = Size(width, height),
+                )
+                glyphLayout?.let { drawText(textLayoutResult = it, topLeft = Offset(x, y)) }
+            }
+
+            CursorShape.HORIZONTAL -> {
+                val cursorHeight = height * fraction
+                drawRect(
+                    color = visual.fill,
+                    topLeft = Offset(x, y + height - cursorHeight),
+                    size = Size(width, cursorHeight),
+                )
+            }
+
+            CursorShape.VERTICAL -> {
+                val cursorWidth = width * fraction
+                drawRect(
+                    color = visual.fill,
+                    topLeft = Offset(x, y),
+                    size = Size(cursorWidth, height),
+                )
+            }
+        }
+    }
 }
+
+@Composable
+private fun rememberCursorVisible(mode: ModeProperty?): Boolean {
+    val wait = mode?.blink_wait?.milliseconds ?: 0L.milliseconds
+    val on = mode?.blink_on?.milliseconds ?: 0L.milliseconds
+    val off = mode?.blink_off?.milliseconds ?: 0L.milliseconds
+    var visible by remember(wait, on, off) { mutableStateOf(true) }
+
+    LaunchedEffect(wait, on, off) {
+        visible = true
+        if (on <= 0L.milliseconds || off <= 0L.milliseconds) return@LaunchedEffect
+
+        if (wait > 0L.milliseconds) delay(wait)
+        while (true) {
+            visible = false
+            delay(off)
+            visible = true
+            delay(on)
+        }
+    }
+
+    return visible
+}
+
+/**
+ * Resolves the colors and glyph used to draw the cursor at the current cell.
+ */
+private fun NvimFrame.cursorVisual(): CursorVisual {
+    val mode = cursorMode
+    val shape = mode?.cursor_shape ?: CursorShape.BLOCK
+    val defaultPercentage = if (shape == CursorShape.BLOCK) 100L else 25L
+    val percentage = (mode?.cell_percentage?.takeIf { it > 0L } ?: defaultPercentage)
+        .toInt()
+        .coerceIn(1, 100)
+
+    val cursor = cursor
+    val row = rows.getOrNull(cursor.row)
+    val span = row?.spans?.firstOrNull { cursor.col in it.startCol until it.endCol }
+    val cellStyle = when {
+        span == null || span.hlId == -1 -> defaultColors
+        else -> styles[span.hlId] ?: defaultColors
+    }
+
+    val cellForeground = cellStyle.color.orElse(defaultColors.color)
+    val cellBackground = cellStyle.background.orElse(defaultColors.background)
+    val attrStyle = mode?.attr_id?.takeIf { it != 0L }?.let { styles[it.toInt()] }
+    val attrForeground = attrStyle?.color?.takeUnless { it == Color.Unspecified }
+    val attrBackground = attrStyle?.background?.takeUnless { it == Color.Unspecified }
+
+    val fill = attrBackground ?: attrForeground ?: cellForeground
+    val textColor = when {
+        shape != CursorShape.BLOCK -> cellBackground
+        attrBackground != null -> attrForeground ?: cellBackground
+        else -> cellBackground
+    }
+
+    val glyph = if (shape == CursorShape.BLOCK && span != null) {
+        val offset = cursor.col - span.startCol
+        span.text.getOrNull(offset)?.takeUnless { it == ' ' }?.toString()
+    } else {
+        null
+    }
+
+    return CursorVisual(
+        shape = shape,
+        percentage = percentage,
+        fill = fill,
+        textColor = textColor,
+        textStyle = cellStyle,
+        glyph = glyph,
+    )
+}
+
+private fun Color.orElse(fallback: Color): Color = if (this == Color.Unspecified) fallback else this
 
 /**
  * The replacement to the old method (hidden text input)

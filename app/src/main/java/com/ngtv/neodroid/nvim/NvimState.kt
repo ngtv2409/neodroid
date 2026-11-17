@@ -208,6 +208,9 @@ class NvimFrame(
     val options: Map<String, Any?> = emptyMap(),
     val isBusy: Boolean = true,
 ) {
+    val cursorMode: ModeProperty?
+        get() = if (cursorStyleEnabled) modeInfo.getOrNull(mode) else null
+
     override fun equals(other: Any?) = other is NvimFrame && other.generation == generation
     override fun hashCode() = generation.hashCode()
 }
