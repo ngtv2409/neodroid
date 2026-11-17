@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SshSessionScreen(session: WorkspaceSession) {
+fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -173,6 +173,7 @@ fun SshSessionScreen(session: WorkspaceSession) {
                         }
                     }
                 },
+                onBack = onBack,
                 extraKeysState = extraKeysState,
             )
         },

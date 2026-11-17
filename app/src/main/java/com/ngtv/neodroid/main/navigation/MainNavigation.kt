@@ -190,7 +190,7 @@ private fun WorkspaceSessionDestination(
 
     when {
         session != null -> {
-            SshSessionScreen(session!!)
+            SshSessionScreen(session!!, onBack = onBack)
         }
 
         sessionError -> {

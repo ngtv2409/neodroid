@@ -46,6 +46,7 @@ internal fun WorkspaceControlBar(
     onCloseTool: (WorkspaceTool) -> Unit,
     onAddTool: () -> Unit,
     onKeyAction: (ExtraKeyAction) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     extraKeysState: ExtraKeysState = rememberExtraKeysState(),
 ) {
@@ -59,6 +60,23 @@ internal fun WorkspaceControlBar(
                 modifier = Modifier.height(20.dp),
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
+            Spacer(modifier = Modifier.width(Spacing.xxs))
+            // back button
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "<",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Spacer(modifier = Modifier.width(Spacing.xxs))
             SessionSwitcher(
                 tools = tools,
                 currentTool = currentTool,
