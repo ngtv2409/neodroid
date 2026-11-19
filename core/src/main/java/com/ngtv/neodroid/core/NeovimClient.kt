@@ -142,6 +142,20 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
         call("nvim_ui_try_resize", listOf(width, height))
     }
 
+    suspend fun inputMouse(
+        button: String,
+        action: String,
+        modifier: String,
+        grid: Int,
+        row: Int,
+        col: Int,
+    ) {
+        notify(
+            "nvim_input_mouse",
+            listOf(button, action, modifier, grid, row, col),
+        )
+    }
+
     fun setRequestHandler(handler: RpcRequestHandler) {
         requestHandler = handler
     }

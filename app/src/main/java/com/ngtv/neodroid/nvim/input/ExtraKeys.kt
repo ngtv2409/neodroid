@@ -60,6 +60,18 @@ class ExtraKeysState {
         return combined + remainder
     }
 
+    fun takeModifierString(): String {
+        if (activeModifiers.isEmpty()) return ""
+
+        val value = buildString {
+            if (ExtraKeyModifier.Ctrl in activeModifiers) append("C-")
+            if (ExtraKeyModifier.Alt in activeModifiers) append("A-")
+            if (ExtraKeyModifier.Shift in activeModifiers) append("S-")
+        }
+        clearModifiers()
+        return value
+    }
+
     fun consume(action: ExtraKeyAction): ExtraKeyAction = when (action) {
         is ExtraKeyAction.SendKeys -> ExtraKeyAction.SendKeys(applyToInput(action.keys))
         is ExtraKeyAction.Modifier -> action

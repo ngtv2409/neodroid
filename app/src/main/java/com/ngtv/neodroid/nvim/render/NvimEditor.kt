@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +50,8 @@ import com.ngtv.neodroid.R
 import com.ngtv.neodroid.core.events.CursorShape
 import com.ngtv.neodroid.core.events.ModeProperty
 import com.ngtv.neodroid.nvim.NvimFrame
+import com.ngtv.neodroid.nvim.input.NvimGestureView
+import com.ngtv.neodroid.nvim.input.NvimMouseEvent
 import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.delay
 import kotlin.time.Duration
@@ -58,6 +61,8 @@ import kotlin.time.Duration.Companion.milliseconds
 fun NvimEditor(
     frame: NvimFrame,
     onResize: suspend (width: Int, height: Int) -> Unit,
+    onMouse: (NvimMouseEvent) -> Unit,
+    takeModifiers: () -> String,
     modifier: Modifier = Modifier,
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -141,6 +146,15 @@ fun NvimEditor(
                     cellHeight = cellHeight,
                     textMeasurer = textMeasurer,
                     baseTextStyle = baseTextStyle,
+                )
+                NvimGestureOverlay(
+                    cellWidthPx = with(density) { cellWidth.toPx() },
+                    cellHeightPx = with(density) { cellHeight.toPx() },
+                    columns = columns,
+                    rows = visibleRows,
+                    onMouse = onMouse,
+                    takeModifiers = takeModifiers,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -369,6 +383,37 @@ private fun NvimFrame.cursorVisual(): CursorVisual {
 }
 
 private fun Color.orElse(fallback: Color): Color = if (this == Color.Unspecified) fallback else this
+
+/**
+ * Transparent gesture layer over the grid. It handles both touch and
+ * hardware-mouse events, translating them into `nvim_input_mouse` events.
+ */
+@Composable
+private fun NvimGestureOverlay(
+    cellWidthPx: Float,
+    cellHeightPx: Float,
+    columns: Int,
+    rows: Int,
+    onMouse: (NvimMouseEvent) -> Unit,
+    takeModifiers: () -> String,
+    modifier: Modifier = Modifier,
+) {
+    val currentOnMouse by rememberUpdatedState(onMouse)
+    val currentTakeModifiers by rememberUpdatedState(takeModifiers)
+
+    AndroidView(
+        factory = { context -> NvimGestureView(context) },
+        update = { view ->
+            view.columns = columns
+            view.rows = rows
+            view.cellWidthPx = cellWidthPx.coerceAtLeast(1f)
+            view.cellHeightPx = cellHeightPx.coerceAtLeast(1f)
+            view.onMouse = currentOnMouse
+            view.takeModifiers = currentTakeModifiers
+        },
+        modifier = modifier,
+    )
+}
 
 /**
  * The replacement to the old method (hidden text input)

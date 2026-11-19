@@ -6,6 +6,7 @@ import androidx.compose.ui.text.SpanStyle
 import com.ngtv.neodroid.core.NeovimClient
 import com.ngtv.neodroid.core.NvimNotification
 import com.ngtv.neodroid.core.events.NvimUiEvent
+import com.ngtv.neodroid.nvim.input.NvimMouseEvent
 import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -54,17 +55,49 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
         }
     }
 
-    private val inputQueue = Channel<String>(Channel.UNLIMITED)
+    private sealed interface NvimInput {
+        data class Keys(val keys: String) : NvimInput
+        data class Mouse(val event: NvimMouseEvent) : NvimInput
+    }
+
+    private val inputQueue = Channel<NvimInput>(Channel.UNLIMITED)
 
     private val inputJob: Job = nvim.scope.launch(Dispatchers.IO) {
         try {
-            for (keys in inputQueue) {
-                val batch = StringBuilder(keys)
-                while (true) {
-                    val next = inputQueue.tryReceive().getOrNull() ?: break
-                    batch.append(next)
+            var pending: NvimInput? = null
+            while (true) {
+                val input = pending
+                    ?: inputQueue.receiveCatching().getOrNull()
+                    ?: break
+                pending = null
+
+                when (input) {
+                    is NvimInput.Keys -> {
+                        val batch = StringBuilder(input.keys)
+                        while (true) {
+                            val next = inputQueue.tryReceive().getOrNull() ?: break
+                            if (next is NvimInput.Keys) {
+                                batch.append(next.keys)
+                            } else {
+                                pending = next
+                                break
+                            }
+                        }
+                        nvim.notify("nvim_input", listOf(batch.toString()))
+                    }
+
+                    is NvimInput.Mouse -> {
+                        val event = input.event
+                        nvim.inputMouse(
+                            button = event.button.nvimName,
+                            action = event.action.nvimName,
+                            modifier = event.modifier,
+                            grid = event.grid,
+                            row = event.row,
+                            col = event.col,
+                        )
+                    }
                 }
-                nvim.notify("nvim_input", listOf(batch.toString()))
             }
         } catch (e: CancellationException) {
             throw e
@@ -75,7 +108,13 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
 
     fun sendInput(keys: String) {
         if (keys.isEmpty()) return
-        if (inputQueue.trySend(keys).isSuccess) {
+        if (inputQueue.trySend(NvimInput.Keys(keys)).isSuccess) {
+            NvimPerf.markInput()
+        }
+    }
+
+    fun sendMouse(event: NvimMouseEvent) {
+        if (inputQueue.trySend(NvimInput.Mouse(event)).isSuccess) {
             NvimPerf.markInput()
         }
     }

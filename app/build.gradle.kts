@@ -28,9 +28,11 @@ android {
 
     buildTypes {
         release {
+            isDebuggable = false
             resValue("string", "app_name", "Neodroid")
         }
         debug {
+            isDebuggable = true
             applicationIdSuffix = ".debug"
             resValue("string", "app_name", "(Debug) Neodroid")
         }

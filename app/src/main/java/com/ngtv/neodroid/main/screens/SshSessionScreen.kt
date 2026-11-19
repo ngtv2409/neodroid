@@ -238,6 +238,12 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
                                     onResize = { width, height ->
                                         tool.nvimSession.resize(width, height)
                                     },
+                                    onMouse = { event ->
+                                        tool.nvimSession.sendMouse(event)
+                                    },
+                                    takeModifiers = {
+                                        extraKeysState.takeModifierString()
+                                    },
                                 )
                             }
                         }
