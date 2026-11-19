@@ -1,21 +1,15 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.authkeys
 
 import android.content.ClipData
-import android.text.format.DateUtils
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -33,9 +27,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,29 +45,26 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.database.AuthKeyCreationState
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.AuthKeyViewModel
 import com.ngtv.neodroid.security.AuthKeyAlgorithm
 import com.ngtv.neodroid.security.sshPublicKeyFingerprint
-import com.ngtv.neodroid.sharedComponents.ActionMenuItem
-import com.ngtv.neodroid.sharedComponents.CompactListItem
-import com.ngtv.neodroid.sharedComponents.ValidatedTextField
+import com.ngtv.neodroid.ui.components.ActionMenuItem
+import com.ngtv.neodroid.ui.components.CompactListItem
+import com.ngtv.neodroid.ui.components.ConfirmDeleteDialog
+import com.ngtv.neodroid.ui.components.DetailRow
+import com.ngtv.neodroid.ui.components.EmptyState
+import com.ngtv.neodroid.ui.components.HintText
+import com.ngtv.neodroid.ui.components.ListSectionHeader
+import com.ngtv.neodroid.ui.components.NeodroidTopBar
+import com.ngtv.neodroid.ui.components.SectionLabel
+import com.ngtv.neodroid.ui.components.SplitPaneLayout
+import com.ngtv.neodroid.ui.components.ValidatedTextField
 import com.ngtv.neodroid.ui.theme.Spacing
+import com.ngtv.neodroid.ui.util.relativeTime
 import kotlinx.coroutines.launch
-
-private val AuthKeySplitPaneThreshold = 720.dp
-private val AuthKeyListPaneWidth = 360.dp
-
-@Composable
-private fun authKeyTopBarColors() = TopAppBarDefaults.topAppBarColors(
-    containerColor = MaterialTheme.colorScheme.primaryContainer,
-    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-)
 
 @Composable
 fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
@@ -94,62 +82,55 @@ fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
         selectedKeyId = null
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        if (maxWidth >= AuthKeySplitPaneThreshold) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            ) {
-                Column(
-                    modifier = Modifier.width(AuthKeyListPaneWidth).fillMaxHeight(),
-                ) {
-                    AuthKeyTopBar(
-                        title = "Auth keys",
-                        onBack = onBack,
-                        onAdd = openCreate,
-                    )
-                    AuthKeyList(
-                        keys = keys,
-                        selectedKeyId = selectedKeyId,
-                        onKeyClick = {
-                            isCreating = false
-                            selectedKeyId = it
-                        },
-                        onDelete = { keyPendingDeletion = it },
-                        modifier = Modifier.fillMaxSize(),
+    SplitPaneLayout(
+        listPane = {
+            AuthKeyTopBar(
+                title = "Auth keys",
+                onBack = onBack,
+                onAdd = openCreate,
+            )
+            AuthKeyList(
+                keys = keys,
+                selectedKeyId = selectedKeyId,
+                onKeyClick = {
+                    isCreating = false
+                    selectedKeyId = it
+                },
+                onDelete = { keyPendingDeletion = it },
+                modifier = Modifier.fillMaxSize(),
+            )
+        },
+        detailPane = {
+            when {
+                isCreating -> {
+                    CreateAuthKeyScreen(
+                        viewModel = viewModel,
+                        onBack = { isCreating = false },
+                        onCreated = { isCreating = false },
                     )
                 }
-                VerticalDivider()
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    when {
-                        isCreating -> {
-                            CreateAuthKeyScreen(
-                                viewModel = viewModel,
-                                onBack = { isCreating = false },
-                                onCreated = { isCreating = false },
-                            )
-                        }
 
-                        selectedKey != null -> {
-                            AuthKeyDetailScreen(
-                                key = selectedKey,
-                                onBack = { selectedKeyId = null },
-                                onRename = { displayName ->
-                                    viewModel.updateKey(
-                                        selectedKey.copy(displayName = displayName),
-                                    )
-                                },
+                selectedKey != null -> {
+                    AuthKeyDetailScreen(
+                        key = selectedKey,
+                        onBack = { selectedKeyId = null },
+                        onRename = { displayName ->
+                            viewModel.updateKey(
+                                selectedKey.copy(displayName = displayName),
                             )
-                        }
+                        },
+                    )
+                }
 
-                        else -> {
-                            EmptyAuthKeyDetailPane()
-                        }
-                    }
+                else -> {
+                    EmptyState(
+                        title = "Select a key",
+                        message = "Choose an authentication key from the list to view its details.",
+                    )
                 }
             }
-        } else {
+        },
+        compactContent = {
             when {
                 isCreating -> {
                     CreateAuthKeyScreen(
@@ -193,12 +174,15 @@ fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
                     }
                 }
             }
-        }
-    }
+        },
+    )
 
     keyPendingDeletion?.let { key ->
-        DeleteAuthKeyDialog(
-            key = key,
+        ConfirmDeleteDialog(
+            title = "Delete auth key?",
+            message = "\"${key.displayName.ifBlank {
+                AuthKeyAlgorithm.displayName(key.algorithm)
+            }}\" will be removed. This cannot be undone.",
             onDismiss = { keyPendingDeletion = null },
             onConfirm = {
                 viewModel.deleteKey(key)
@@ -216,19 +200,9 @@ private fun AuthKeyTopBar(
     onAdd: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
 ) {
-    TopAppBar(
-        colors = authKeyTopBarColors(),
-        navigationIcon = {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.semantics { contentDescription = "Back" },
-            ) {
-                Text("←", style = MaterialTheme.typography.titleLarge)
-            }
-        },
-        title = {
-            Text(title)
-        },
+    NeodroidTopBar(
+        title = title,
+        onBack = onBack,
         actions = {
             if (onEdit != null) {
                 TextButton(
@@ -267,7 +241,7 @@ private fun AuthKeyList(
 ) {
     LazyColumn(modifier = modifier) {
         item(key = "keys-header") {
-            AuthKeySectionHeader(
+            ListSectionHeader(
                 title = "Keys",
                 count = keys.size,
             )
@@ -275,7 +249,7 @@ private fun AuthKeyList(
 
         if (keys.isEmpty()) {
             item(key = "keys-empty") {
-                AuthKeyHint("No authentication keys saved yet. Keys will appear here once created.")
+                HintText("No authentication keys saved yet. Keys will appear here once created.")
             }
         } else {
             itemsIndexed(
@@ -292,33 +266,6 @@ private fun AuthKeyList(
                     HorizontalDivider(modifier = Modifier.padding(horizontal = Spacing.md))
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun AuthKeySectionHeader(title: String, count: Int = 0) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .padding(
-                start = Spacing.lg,
-                end = Spacing.sm,
-                top = Spacing.lg,
-                bottom = Spacing.xxs,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-        )
-
-        if (count > 0) {
-            Text(
-                text = count.toString(),
-                modifier = Modifier.padding(start = Spacing.sm),
-                style = MaterialTheme.typography.labelMedium,
-            )
         }
     }
 }
@@ -429,7 +376,7 @@ private fun CreateAuthKeyScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            AuthKeyFormLabel("Name")
+            SectionLabel("Name", modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs))
             ValidatedTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
@@ -439,7 +386,10 @@ private fun CreateAuthKeyScreen(
                 validator = { null },
             )
 
-            AuthKeyFormLabel("Algorithm")
+            SectionLabel(
+                "Algorithm",
+                modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
+            )
             AuthKeyAlgorithm.entries.forEach { option ->
                 Row(
                     modifier = Modifier
@@ -496,19 +446,6 @@ private fun CreateAuthKeyScreen(
 }
 
 @Composable
-private fun AuthKeyFormLabel(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.8.sp,
-        ),
-        color = MaterialTheme.colorScheme.primary,
-    )
-}
-
-@Composable
 private fun AuthKeyDetailScreen(
     key: AuthKeyEntity,
     onBack: () -> Unit,
@@ -554,22 +491,28 @@ private fun AuthKeyDetailScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            AuthKeySectionLabel("Metadata")
-            AuthKeyDetailRow("Algorithm", key.algorithm)
-            AuthKeyDetailRow("Fingerprint", fingerprint ?: "Unavailable")
-            AuthKeyDetailRow(
-                "Created",
-                authKeyRelativeTime(key.createdAt),
+            SectionLabel(
+                "Metadata",
+                modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
             )
-            AuthKeyDetailRow(
+            DetailRow("Algorithm", key.algorithm)
+            DetailRow("Fingerprint", fingerprint ?: "Unavailable")
+            DetailRow(
+                "Created",
+                relativeTime(key.createdAt),
+            )
+            DetailRow(
                 "Last used",
-                key.lastUsedAt?.let(::authKeyRelativeTime) ?: "Never",
+                key.lastUsedAt?.let(::relativeTime) ?: "Never",
             )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                AuthKeySectionLabel("Public key")
+                SectionLabel(
+                    "Public key",
+                    modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
+                )
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
                     onClick = {
@@ -658,117 +601,11 @@ private fun RenameAuthKeyDialog(
     )
 }
 
-@Composable
-private fun AuthKeySectionLabel(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.8.sp,
-        ),
-        color = MaterialTheme.colorScheme.primary,
-    )
-}
-
-@Composable
-private fun AuthKeyDetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = Spacing.xs),
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.width(110.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
-private fun DeleteAuthKeyDialog(key: AuthKeyEntity, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("Delete auth key?")
-        },
-        text = {
-            Text(
-                "\"${key.displayName.ifBlank {
-                    AuthKeyAlgorithm.displayName(key.algorithm)
-                }}\" will be removed. This cannot be undone.",
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    text = "Delete",
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
-}
-
-@Composable
-private fun AuthKeyHint(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun EmptyAuthKeyDetailPane() {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(Spacing.xl),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "Select a key",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "Choose an authentication key from the list to view its details.",
-                modifier = Modifier.padding(top = Spacing.xs),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
 private fun authKeyUsageTime(key: AuthKeyEntity): String {
     val timestamp = key.lastUsedAt
     if (timestamp == null) {
-        return "Created ${authKeyRelativeTime(key.createdAt)}"
+        return "Created ${relativeTime(key.createdAt)}"
     }
 
-    return "Used ${authKeyRelativeTime(timestamp)}"
+    return "Used ${relativeTime(timestamp)}"
 }
-
-private fun authKeyRelativeTime(timestamp: Long): String = DateUtils.getRelativeTimeSpanString(
-    timestamp,
-    System.currentTimeMillis(),
-    DateUtils.MINUTE_IN_MILLIS,
-    DateUtils.FORMAT_ABBREV_RELATIVE,
-).toString()

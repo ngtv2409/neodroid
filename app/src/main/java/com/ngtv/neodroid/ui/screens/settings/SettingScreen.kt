@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -18,21 +18,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -45,8 +43,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.settings.Setting
@@ -54,7 +52,9 @@ import com.ngtv.neodroid.settings.SettingsCatalog
 import com.ngtv.neodroid.settings.SettingsCategory
 import com.ngtv.neodroid.settings.SettingsRepository
 import com.ngtv.neodroid.settings.rememberSettingsRepository
-import com.ngtv.neodroid.sharedComponents.CompactListItem
+import com.ngtv.neodroid.ui.components.CompactListItem
+import com.ngtv.neodroid.ui.components.NeodroidTopBar
+import com.ngtv.neodroid.ui.components.SectionLabel
 import com.ngtv.neodroid.ui.theme.Spacing
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -143,16 +143,9 @@ private fun SettingsListPane(
     Column(
         modifier = modifier.background(MaterialTheme.colorScheme.background),
     ) {
-        TopAppBar(
-            colors = settingsTopBarColors(),
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Text("←", style = MaterialTheme.typography.titleLarge)
-                }
-            },
-            title = {
-                Text("Settings")
-            },
+        NeodroidTopBar(
+            title = "Settings",
+            onBack = onBack,
         )
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -200,22 +193,11 @@ private fun SettingsCategoryPane(
     Column(
         modifier = modifier.background(MaterialTheme.colorScheme.background),
     ) {
-        CenterAlignedTopAppBar(
+        NeodroidTopBar(
+            title = category.title,
+            onBack = onBack,
+            centered = true,
             colors = categoryTopBarColors(),
-            navigationIcon = {
-                if (onBack != null) {
-                    IconButton(onClick = onBack) {
-                        Text("←", style = MaterialTheme.typography.titleLarge)
-                    }
-                }
-            },
-            title = {
-                Text(
-                    text = category.title,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            },
         )
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
@@ -254,7 +236,15 @@ private fun SettingsCategoryContent(
 
         category.sections.forEach { section ->
             item(key = "section-${category.id}-${section.title}") {
-                SettingsSectionHeader(section.title)
+                SectionLabel(
+                    text = section.title,
+                    modifier = Modifier.padding(
+                        start = Spacing.lg,
+                        end = Spacing.lg,
+                        top = Spacing.lg,
+                        bottom = Spacing.xs,
+                    ),
+                )
             }
 
             items(
@@ -269,21 +259,6 @@ private fun SettingsCategoryContent(
             }
         }
     }
-}
-
-@Composable
-private fun SettingsSectionHeader(title: String) {
-    Text(
-        text = title,
-        modifier = Modifier.padding(
-            start = Spacing.lg,
-            end = Spacing.lg,
-            top = Spacing.lg,
-            bottom = Spacing.xs,
-        ),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-    )
 }
 
 @Composable
@@ -306,11 +281,15 @@ private fun ToggleSettingRow(setting: Setting.Toggle, repository: SettingsReposi
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-                scope.launch {
-                    repository.setValue(setting, !value)
-                }
-            }
+            .toggleable(
+                value = value,
+                role = Role.Switch,
+                onValueChange = { checked ->
+                    scope.launch {
+                        repository.setValue(setting, checked)
+                    }
+                },
+            )
             .padding(horizontal = Spacing.lg, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -321,11 +300,7 @@ private fun ToggleSettingRow(setting: Setting.Toggle, repository: SettingsReposi
         )
         Switch(
             checked = value,
-            onCheckedChange = { checked ->
-                scope.launch {
-                    repository.setValue(setting, checked)
-                }
-            },
+            onCheckedChange = null,
         )
     }
 }
@@ -445,7 +420,7 @@ private fun NumberSettingRow(setting: Setting.Number, repository: SettingsReposi
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { showDialog = true }
+            .clickable(role = Role.Button) { showDialog = true }
             .padding(horizontal = Spacing.lg, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -568,13 +543,6 @@ private fun SettingLabel(setting: Setting<*>, modifier: Modifier = Modifier) {
         }
     }
 }
-
-@Composable
-private fun settingsTopBarColors() = TopAppBarDefaults.topAppBarColors(
-    containerColor = MaterialTheme.colorScheme.primaryContainer,
-    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-)
 
 @Composable
 private fun categoryTopBarColors() = TopAppBarDefaults.topAppBarColors(

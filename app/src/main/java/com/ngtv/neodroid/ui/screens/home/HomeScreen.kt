@@ -1,24 +1,11 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.ngtv.neodroid.main.screens
-import android.text.format.DateUtils
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+package com.ngtv.neodroid.ui.screens.home
+
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -26,50 +13,51 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
-import com.ngtv.neodroid.sharedComponents.ActionMenuItem
-import com.ngtv.neodroid.sharedComponents.CompactListItem
-import com.ngtv.neodroid.sharedComponents.FakeIcon
 import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import com.ngtv.neodroid.ui.components.ActionMenuItem
+import com.ngtv.neodroid.ui.components.CompactListItem
+import com.ngtv.neodroid.ui.components.ConfirmDeleteDialog
+import com.ngtv.neodroid.ui.components.EmptyState
+import com.ngtv.neodroid.ui.components.FakeIcon
+import com.ngtv.neodroid.ui.components.HintText
+import com.ngtv.neodroid.ui.components.ListSectionHeader
+import com.ngtv.neodroid.ui.components.NeodroidTopBar
+import com.ngtv.neodroid.ui.components.SplitPaneLayout
+import com.ngtv.neodroid.ui.components.StatusDot
+import com.ngtv.neodroid.ui.screens.hosts.HostDetailPane
+import com.ngtv.neodroid.ui.screens.hosts.HostEditorScreen
 import com.ngtv.neodroid.ui.theme.Spacing
 import com.ngtv.neodroid.ui.theme.neodroidColors
+import com.ngtv.neodroid.ui.util.relativeTime
 
-private val SplitPaneThreshold = 720.dp
-private val HostListPaneWidth = 360.dp
 private const val MAX_HOME_CONNECTIONS = 3
 private const val MAX_HOME_RECENT_HOSTS = 5
 
 @Composable
-private fun homeTopBarColors() = TopAppBarDefaults.topAppBarColors(
-    containerColor = MaterialTheme.colorScheme.primaryContainer,
-    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-)
-
-@Composable
-private fun SettingsButton(onClick: () -> Unit) {
+private fun HomeTopBarActions(onOpenAuthKeys: () -> Unit, onOpenSettings: () -> Unit) {
     IconButton(
-        onClick = onClick,
+        onClick = onOpenAuthKeys,
+        modifier = Modifier.semantics { contentDescription = "Authentication keys" },
+    ) {
+        FakeIcon()
+    }
+    IconButton(
+        onClick = onOpenSettings,
         modifier = Modifier.semantics { contentDescription = "Settings" },
     ) {
         FakeIcon()
@@ -97,136 +85,26 @@ fun HomeScreen(
     val recent = recentHosts.filter { it.last_connected_at != null }.take(MAX_HOME_RECENT_HOSTS)
 
     var hostPendingDeletion by remember { mutableStateOf<SSHHostEntity?>(null) }
-
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        if (maxWidth >= SplitPaneThreshold) {
-            SplitHomeScreen(
-                viewModel = viewModel,
-                hosts = hosts,
-                recentHosts = recent,
-                onlineConnections = onlineConnections,
-                onConnectHost = onConnectHost,
-                onOpenConnection = onOpenConnection,
-                onShowAllConnections = onShowAllConnections,
-                onOpenAuthKeys = onOpenAuthKeys,
-                onOpenSettings = onOpenSettings,
-                onDeleteHost = { hostPendingDeletion = it },
-                authKeys = authKeys,
-            )
-        } else {
-            CompactHomeScreen(
-                hosts = hosts,
-                recentHosts = recent,
-                onlineConnections = onlineConnections,
-                onOpenHostAdd = onOpenHostAdd,
-                onOpenDetail = onOpenDetail,
-                onConnectHost = onConnectHost,
-                onOpenConnection = onOpenConnection,
-                onShowAllConnections = onShowAllConnections,
-                onOpenAuthKeys = onOpenAuthKeys,
-                onOpenSettings = onOpenSettings,
-                onDeleteHost = { hostPendingDeletion = it },
-            )
-        }
-    }
-
-    hostPendingDeletion?.let { host ->
-        DeleteHostDialog(
-            host = host,
-            onDismiss = { hostPendingDeletion = null },
-            onConfirm = {
-                viewModel.deleteHost(host)
-                hostPendingDeletion = null
-            },
-        )
-    }
-}
-
-@Composable
-private fun CompactHomeScreen(
-    hosts: List<SSHHostEntity>,
-    recentHosts: List<SSHHostEntity>,
-    onlineConnections: List<SshConnection>,
-    onOpenHostAdd: () -> Unit,
-    onOpenDetail: (Int) -> Unit,
-    onConnectHost: (Int) -> Unit,
-    onOpenConnection: (String) -> Unit,
-    onShowAllConnections: () -> Unit,
-    onOpenAuthKeys: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onDeleteHost: (SSHHostEntity) -> Unit,
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                colors = homeTopBarColors(),
-                title = {
-                    Text("Neodroid")
-                },
-                actions = {
-                    IconButton(onClick = onOpenAuthKeys) {
-                        FakeIcon()
-                    }
-                    SettingsButton(onClick = onOpenSettings)
-                },
-            )
-        },
-    ) { innerPadding ->
-        HomeContent(
-            hosts = hosts,
-            recentHosts = recentHosts,
-            onlineConnections = onlineConnections,
-            onOpenHostAdd = onOpenHostAdd,
-            onHostClick = onOpenDetail,
-            onConnectHost = onConnectHost,
-            onOpenConnection = onOpenConnection,
-            onShowAllConnections = onShowAllConnections,
-            onDeleteHost = onDeleteHost,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        )
-    }
-}
-
-@Composable
-private fun SplitHomeScreen(
-    viewModel: SSHHostViewModel,
-    hosts: List<SSHHostEntity>,
-    recentHosts: List<SSHHostEntity>,
-    onlineConnections: List<SshConnection>,
-    onConnectHost: (Int) -> Unit,
-    onOpenConnection: (String) -> Unit,
-    onShowAllConnections: () -> Unit,
-    onOpenAuthKeys: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onDeleteHost: (SSHHostEntity) -> Unit,
-    authKeys: List<AuthKeyEntity>,
-) {
     var selectedHostId by rememberSaveable { mutableStateOf<Int?>(null) }
     var isAdding by rememberSaveable { mutableStateOf(false) }
 
     val selectedHost = hosts.firstOrNull { it.id == selectedHostId }
+    val deleteHost: (SSHHostEntity) -> Unit = { hostPendingDeletion = it }
 
-    Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(
-            modifier = Modifier.width(HostListPaneWidth).fillMaxHeight(),
-        ) {
-            TopAppBar(
-                colors = homeTopBarColors(),
-                title = {
-                    Text("Neodroid")
-                },
+    SplitPaneLayout(
+        listPane = {
+            NeodroidTopBar(
+                title = "Neodroid",
                 actions = {
-                    IconButton(onClick = onOpenAuthKeys) {
-                        FakeIcon()
-                    }
-                    SettingsButton(onClick = onOpenSettings)
+                    HomeTopBarActions(
+                        onOpenAuthKeys = onOpenAuthKeys,
+                        onOpenSettings = onOpenSettings,
+                    )
                 },
             )
             HomeContent(
                 hosts = hosts,
-                recentHosts = recentHosts,
+                recentHosts = recent,
                 onlineConnections = onlineConnections,
                 onOpenHostAdd = {
                     isAdding = true
@@ -239,13 +117,12 @@ private fun SplitHomeScreen(
                 onConnectHost = onConnectHost,
                 onOpenConnection = onOpenConnection,
                 onShowAllConnections = onShowAllConnections,
-                onDeleteHost = onDeleteHost,
+                onDeleteHost = deleteHost,
                 selectedHostId = selectedHostId,
                 modifier = Modifier.fillMaxSize(),
             )
-        }
-        VerticalDivider()
-        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+        },
+        detailPane = {
             when {
                 isAdding -> {
                     HostEditorScreen(
@@ -281,10 +158,56 @@ private fun SplitHomeScreen(
                 }
 
                 else -> {
-                    EmptyDetailPane()
+                    EmptyState(
+                        title = "Select a host",
+                        message = "Choose a host from the list, or add a new one.",
+                    )
                 }
             }
-        }
+        },
+        compactContent = {
+            Scaffold(
+                topBar = {
+                    NeodroidTopBar(
+                        title = "Neodroid",
+                        actions = {
+                            HomeTopBarActions(
+                                onOpenAuthKeys = onOpenAuthKeys,
+                                onOpenSettings = onOpenSettings,
+                            )
+                        },
+                    )
+                },
+            ) { innerPadding ->
+                HomeContent(
+                    hosts = hosts,
+                    recentHosts = recent,
+                    onlineConnections = onlineConnections,
+                    onOpenHostAdd = onOpenHostAdd,
+                    onHostClick = onOpenDetail,
+                    onConnectHost = onConnectHost,
+                    onOpenConnection = onOpenConnection,
+                    onShowAllConnections = onShowAllConnections,
+                    onDeleteHost = deleteHost,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                )
+            }
+        },
+    )
+
+    hostPendingDeletion?.let { host ->
+        ConfirmDeleteDialog(
+            title = "Delete host?",
+            message = "\"${host.server_name}\" will be removed from saved hosts. " +
+                "This cannot be undone.",
+            onDismiss = { hostPendingDeletion = null },
+            onConfirm = {
+                viewModel.deleteHost(host)
+                hostPendingDeletion = null
+            },
+        )
     }
 }
 
@@ -304,7 +227,7 @@ private fun HomeContent(
 ) {
     LazyColumn(modifier = modifier) {
         item(key = "online-header") {
-            HomeSectionHeader(
+            ListSectionHeader(
                 title = "Online",
                 count = onlineConnections.size,
                 actionLabel = if (onlineConnections.isNotEmpty()) {
@@ -318,7 +241,7 @@ private fun HomeContent(
 
         if (onlineConnections.isEmpty()) {
             item(key = "online-empty") {
-                HomeHint("No active connections. Connect to a host below.")
+                HintText("No active connections. Connect to a host below.")
             }
         } else {
             val visibleConnections = onlineConnections.take(MAX_HOME_CONNECTIONS)
@@ -337,7 +260,7 @@ private fun HomeContent(
         }
 
         item(key = "recent-header") {
-            HomeSectionHeader(
+            ListSectionHeader(
                 title = "Recent",
                 count = recentHosts.size,
             )
@@ -345,7 +268,7 @@ private fun HomeContent(
 
         if (recentHosts.isEmpty()) {
             item(key = "recent-empty") {
-                HomeHint("Hosts you connect to will appear here.")
+                HintText("Hosts you connect to will appear here.")
             }
         } else {
             itemsIndexed(
@@ -364,7 +287,7 @@ private fun HomeContent(
         }
 
         item(key = "hosts-header") {
-            HomeSectionHeader(
+            ListSectionHeader(
                 title = "Hosts",
                 count = hosts.size,
                 actionLabel = "+ Add",
@@ -374,7 +297,7 @@ private fun HomeContent(
 
         if (hosts.isEmpty()) {
             item(key = "hosts-empty") {
-                HomeHint("No saved hosts yet. Add one to get started.")
+                HintText("No saved hosts yet. Add one to get started.")
             }
         } else {
             itemsIndexed(
@@ -396,60 +319,14 @@ private fun HomeContent(
 }
 
 @Composable
-private fun HomeSectionHeader(
-    title: String,
-    count: Int = 0,
-    actionLabel: String? = null,
-    onAction: () -> Unit = {},
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .padding(
-                start = Spacing.lg,
-                end = Spacing.sm,
-                top = Spacing.lg,
-                bottom = Spacing.xxs,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-        )
-
-        if (count > 0) {
-            Spacer(Modifier.width(Spacing.sm))
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-
-        Spacer(Modifier.weight(1f))
-
-        if (actionLabel != null) {
-            Text(
-                text = actionLabel,
-                modifier = Modifier
-                    .clickable(role = Role.Button, onClick = onAction)
-                    .padding(horizontal = Spacing.sm),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-    }
-}
-
-@Composable
 private fun OnlineConnectionRow(connection: SshConnection, onClick: () -> Unit) {
     val workspaces by connection.workspaces.collectAsStateWithLifecycle()
 
     CompactListItem(
         leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(MaterialTheme.neodroidColors.online, CircleShape),
+            StatusDot(
+                color = MaterialTheme.neodroidColors.online,
+                contentDescription = "Online",
             )
         },
         headlineContent = {
@@ -556,78 +433,4 @@ private fun HostRow(
         onClick = onClick,
         selected = selected,
     )
-}
-
-@Composable
-private fun DeleteHostDialog(host: SSHHostEntity, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("Delete host?")
-        },
-        text = {
-            Text(
-                "\"${host.server_name}\" will be removed from saved hosts. " +
-                    "This cannot be undone.",
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    text = "Delete",
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
-}
-
-@Composable
-private fun HomeHint(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-private fun relativeTime(timestamp: Long?): String {
-    if (timestamp == null) return "Not connected yet"
-
-    return DateUtils.getRelativeTimeSpanString(
-        timestamp,
-        System.currentTimeMillis(),
-        DateUtils.MINUTE_IN_MILLIS,
-        DateUtils.FORMAT_ABBREV_RELATIVE,
-    ).toString()
-}
-
-@Composable
-private fun EmptyDetailPane() {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(Spacing.xl),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "Select a host",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "Choose a host from the list, or add a new one.",
-                modifier = Modifier.padding(top = Spacing.xs),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
 }

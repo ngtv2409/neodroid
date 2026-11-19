@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.main.navigation
+package com.ngtv.neodroid.ui.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,16 +17,16 @@ import androidx.navigation.compose.rememberNavController
 import com.ngtv.neodroid.AppContainer
 import com.ngtv.neodroid.database.AuthKeyViewModel
 import com.ngtv.neodroid.database.SSHHostViewModel
-import com.ngtv.neodroid.main.screens.AddHostScreen
-import com.ngtv.neodroid.main.screens.AuthKeyManagerScreen
-import com.ngtv.neodroid.main.screens.ConnectionsScreen
-import com.ngtv.neodroid.main.screens.DetailHostScreen
-import com.ngtv.neodroid.main.screens.HomeScreen
-import com.ngtv.neodroid.main.screens.SettingScreen
-import com.ngtv.neodroid.main.screens.SshSessionScreen
-import com.ngtv.neodroid.main.screens.WorkspacePrepareClient
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
+import com.ngtv.neodroid.ui.screens.authkeys.AuthKeyManagerScreen
+import com.ngtv.neodroid.ui.screens.connections.ConnectionsScreen
+import com.ngtv.neodroid.ui.screens.home.HomeScreen
+import com.ngtv.neodroid.ui.screens.hosts.AddHostScreen
+import com.ngtv.neodroid.ui.screens.hosts.DetailHostScreen
+import com.ngtv.neodroid.ui.screens.settings.SettingScreen
+import com.ngtv.neodroid.ui.screens.workspace.SshSessionScreen
+import com.ngtv.neodroid.ui.screens.workspace.WorkspacePrepareClient
 import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)

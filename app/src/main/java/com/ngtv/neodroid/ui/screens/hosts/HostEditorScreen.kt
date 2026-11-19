@@ -1,42 +1,32 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.hosts
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
-import com.ngtv.neodroid.sharedComponents.ValidatedTextField
+import com.ngtv.neodroid.ui.components.BottomActionBar
+import com.ngtv.neodroid.ui.components.NeodroidTopBar
+import com.ngtv.neodroid.ui.components.SectionLabel
+import com.ngtv.neodroid.ui.components.ValidatedTextField
+import com.ngtv.neodroid.ui.screens.authkeys.AuthKeySelector
 import com.ngtv.neodroid.ui.theme.Spacing
 
 private fun validateServerName(value: String): String? =
@@ -57,7 +47,6 @@ private fun validatePort(value: String): String? {
 private fun validateUsername(value: String): String? =
     if (value.isBlank()) "Username is required" else null
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HostEditorScreen(
     host: SSHHostEntity?,
@@ -101,51 +90,28 @@ fun HostEditorScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics { contentDescription = "Back" },
-                    ) {
-                        Text("←", style = MaterialTheme.typography.titleLarge)
-                    }
-                },
-                title = {
-                    Text(if (host == null) "Add host" else "Edit host")
-                },
+            NeodroidTopBar(
+                title = if (host == null) "Add host" else "Edit host",
+                onBack = onBack,
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 3.dp) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .padding(horizontal = Spacing.lg, vertical = Spacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                ) {
-                    if (host == null) {
-                        Button(
-                            modifier = Modifier.weight(1f),
-                            enabled = canSubmit,
-                            onClick = submit,
-                        ) {
-                            Text("Add host")
-                        }
-                    } else {
-                        Button(
-                            modifier = Modifier.weight(1f),
-                            enabled = canSubmit && isChanged,
-                            onClick = submit,
-                        ) {
-                            Text("Save")
-                        }
+            BottomActionBar {
+                if (host == null) {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        enabled = canSubmit,
+                        onClick = submit,
+                    ) {
+                        Text("Add host")
+                    }
+                } else {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        enabled = canSubmit && isChanged,
+                        onClick = submit,
+                    ) {
+                        Text("Save")
                     }
                 }
             }
@@ -214,17 +180,4 @@ fun HostEditorScreen(
             )
         }
     }
-}
-
-@Composable
-private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        modifier = modifier,
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.8.sp,
-        ),
-        color = MaterialTheme.colorScheme.primary,
-    )
 }

@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.sharedComponents
+package com.ngtv.neodroid.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -25,6 +25,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.ui.theme.Spacing
@@ -83,8 +86,11 @@ fun CompactListItem(
                             }
                         }
                     }
+                    .semantics { this.selected = selected }
                     .combinedClickable(
+                        role = Role.Button,
                         onClick = onClick,
+                        onLongClickLabel = if (hasMenu) "More actions" else null,
                         onLongClick = if (hasMenu) {
                             { menuExpanded = true }
                         } else {

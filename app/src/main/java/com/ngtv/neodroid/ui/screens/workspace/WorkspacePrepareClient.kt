@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.workspace
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,7 +22,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -34,8 +31,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,14 +43,14 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.security.AuthKeyMaterial
-import com.ngtv.neodroid.sharedComponents.PasswordInput
 import com.ngtv.neodroid.sshUtils.HostKeyMismatchException
 import com.ngtv.neodroid.sshUtils.SshAuth
 import com.ngtv.neodroid.sshUtils.SshConnectionConfig
@@ -63,6 +58,11 @@ import com.ngtv.neodroid.sshUtils.SshConnectionProbe
 import com.ngtv.neodroid.sshUtils.SshException
 import com.ngtv.neodroid.sshUtils.SshProbeConfig
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import com.ngtv.neodroid.ui.components.BottomActionBar
+import com.ngtv.neodroid.ui.components.NeodroidTopBar
+import com.ngtv.neodroid.ui.components.PasswordInput
+import com.ngtv.neodroid.ui.components.SectionLabel
+import com.ngtv.neodroid.ui.screens.authkeys.AuthKeySelector
 import com.ngtv.neodroid.ui.theme.Spacing
 import com.ngtv.neodroid.ui.theme.neodroidColors
 import kotlinx.coroutines.CancellationException
@@ -379,50 +379,30 @@ fun WorkspacePrepareClient(
             SnackbarHost(hostState = snackbarHostState)
         },
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("←", style = MaterialTheme.typography.titleLarge)
-                    }
-                },
-                title = {
-                    Text("Connect")
-                },
+            NeodroidTopBar(
+                title = "Connect",
+                onBack = onBack,
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 3.dp) {
-                Column(
+            BottomActionBar {
+                Button(
+                    onClick = ::connect,
+                    enabled = canConnect,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .padding(horizontal = Spacing.lg, vertical = Spacing.md),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        .height(52.dp),
                 ) {
-                    Button(
-                        onClick = ::connect,
-                        enabled = canConnect,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                    ) {
-                        if (isConnecting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                            )
-                            Spacer(modifier = Modifier.width(Spacing.sm))
-                            Text("Connecting…")
-                        } else {
-                            Text("Connect")
-                        }
+                    if (isConnecting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Text("Connecting…")
+                    } else {
+                        Text("Connect")
                     }
                 }
             }
@@ -803,7 +783,12 @@ private fun AuthMethodOption(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = enabled, onClick = onClick)
+                    .clickable(
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = onClick,
+                    )
+                    .semantics { this.selected = selected }
                     .padding(horizontal = Spacing.lg, vertical = Spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -1080,16 +1065,4 @@ private fun FingerprintBlock(label: String?, fingerprint: String) {
             )
         }
     }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.8.sp,
-        ),
-        color = MaterialTheme.colorScheme.primary,
-    )
 }

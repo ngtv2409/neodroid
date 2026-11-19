@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.sharedComponents
+package com.ngtv.neodroid.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -15,6 +15,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.ui.theme.Spacing
@@ -67,7 +68,7 @@ private fun ActionMenuRow(item: ActionMenuItem, onDismissRequest: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.extraSmall)
-            .clickable(enabled = item.enabled) {
+            .clickable(enabled = item.enabled, role = Role.Button) {
                 onDismissRequest()
                 item.onClick()
             }

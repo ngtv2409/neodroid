@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.hosts
 
 import androidx.compose.runtime.Composable
 import com.ngtv.neodroid.database.AuthKeyEntity

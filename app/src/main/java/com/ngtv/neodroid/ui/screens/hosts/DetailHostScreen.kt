@@ -1,44 +1,34 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.hosts
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
 import com.ngtv.neodroid.security.AuthKeyAlgorithm
+import com.ngtv.neodroid.ui.components.BottomActionBar
+import com.ngtv.neodroid.ui.components.DetailRow
+import com.ngtv.neodroid.ui.components.NeodroidTopBar
+import com.ngtv.neodroid.ui.components.SectionLabel
+import com.ngtv.neodroid.ui.screens.authkeys.authKeyFingerprint
 import com.ngtv.neodroid.ui.theme.Spacing
 
 @Composable
@@ -106,7 +96,6 @@ fun HostDetailPane(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HostDetailScreen(
     host: SSHHostEntity,
@@ -119,24 +108,9 @@ private fun HostDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics { contentDescription = "Back" },
-                    ) {
-                        Text("←", style = MaterialTheme.typography.titleLarge)
-                    }
-                },
-                title = {
-                    Text("Host")
-                },
+            NeodroidTopBar(
+                title = "Host",
+                onBack = onBack,
                 actions = {
                     TextButton(
                         onClick = onEdit,
@@ -150,20 +124,12 @@ private fun HostDetailScreen(
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 3.dp) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = Spacing.lg, vertical = Spacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            BottomActionBar {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = onConnect,
                 ) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = onConnect,
-                    ) {
-                        Text("Connect")
-                    }
+                    Text("Connect")
                 }
             }
         },
@@ -187,17 +153,26 @@ private fun HostDetailScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            HostDetailSectionLabel("Connection")
-            HostDetailRow("Host name", host.hostname)
-            HostDetailRow("Port", host.port.toString())
-            HostDetailRow("Username", host.username)
+            SectionLabel(
+                "Connection",
+                modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
+            )
+            DetailRow("Host name", host.hostname)
+            DetailRow("Port", host.port.toString())
+            DetailRow("Username", host.username)
 
-            HostDetailSectionLabel("Security")
-            HostDetailRow(
+            SectionLabel(
+                "Security",
+                modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
+            )
+            DetailRow(
                 "Server signature",
                 host.server_signature ?: "Not trusted yet",
             )
-            HostDetailSectionLabel("Authentication")
+            SectionLabel(
+                "Authentication",
+                modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
+            )
             if (authKey == null) {
                 Text(
                     text = "Password only",
@@ -206,54 +181,19 @@ private fun HostDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                HostDetailRow(
+                DetailRow(
                     "Key",
                     authKey.displayName.ifBlank { "unnamed" },
                 )
-                HostDetailRow(
+                DetailRow(
                     "Type",
                     AuthKeyAlgorithm.displayName(authKey.algorithm),
                 )
-                HostDetailRow(
+                DetailRow(
                     "Fingerprint",
                     authKeyFingerprint(authKey) ?: "Unavailable",
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun HostDetailSectionLabel(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.8.sp,
-        ),
-        color = MaterialTheme.colorScheme.primary,
-    )
-}
-
-@Composable
-private fun HostDetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = Spacing.xs),
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.width(110.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
     }
 }

@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.workspace
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
@@ -25,6 +24,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.nvim.input.DefaultExtraKeys
@@ -33,6 +35,7 @@ import com.ngtv.neodroid.nvim.input.ExtraKeysBar
 import com.ngtv.neodroid.nvim.input.ExtraKeysState
 import com.ngtv.neodroid.nvim.input.rememberExtraKeysState
 import com.ngtv.neodroid.sshUtils.WorkspaceTool
+import com.ngtv.neodroid.ui.components.RoundToolButton
 import com.ngtv.neodroid.ui.theme.Spacing
 
 /**
@@ -62,36 +65,17 @@ internal fun WorkspaceControlBar(
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
             Spacer(modifier = Modifier.width(Spacing.xxs))
-            // back button
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "<",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            RoundToolButton(
+                label = "<",
+                contentDescription = "Back",
+                onClick = onBack,
+            )
             Spacer(modifier = Modifier.width(Spacing.xxs))
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable(onClick = onOpenKeyboard),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "KB",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            RoundToolButton(
+                label = "KB",
+                contentDescription = "Show keyboard",
+                onClick = onOpenKeyboard,
+            )
             Spacer(modifier = Modifier.width(Spacing.xxs))
             SessionSwitcher(
                 tools = tools,
@@ -120,7 +104,11 @@ private fun SessionSwitcher(
                 .height(32.dp)
                 .clip(MaterialTheme.shapes.small)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .clickable(enabled = tools.isNotEmpty()) { expanded = true }
+                .clickable(
+                    enabled = tools.isNotEmpty(),
+                    role = Role.Button,
+                ) { expanded = true }
+                .semantics { contentDescription = "Select session" }
                 .padding(horizontal = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -167,7 +155,11 @@ private fun SessionSwitcher(
                         },
                         trailingIcon = {
                             IconButton(
-                                modifier = Modifier.size(32.dp),
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .semantics {
+                                        contentDescription = "Close session ${tool.title}"
+                                    },
                                 onClick = {
                                     expanded = false
                                     onClose(tool)
@@ -189,18 +181,9 @@ private fun SessionSwitcher(
 
 @Composable
 private fun AddSessionButton(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "+",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
+    RoundToolButton(
+        label = "+",
+        contentDescription = "New session",
+        onClick = onClick,
+    )
 }

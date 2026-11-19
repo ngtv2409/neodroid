@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.workspace
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,7 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
-import com.ngtv.neodroid.sharedComponents.ValidatedTextField
+import com.ngtv.neodroid.ui.components.ValidatedTextField
 import com.ngtv.neodroid.ui.theme.Spacing
 
 @Composable

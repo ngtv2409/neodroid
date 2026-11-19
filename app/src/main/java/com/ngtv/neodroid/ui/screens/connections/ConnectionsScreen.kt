@@ -1,9 +1,7 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.connections
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,35 +13,32 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshConnectionState
 import com.ngtv.neodroid.sshUtils.SshSessionManager
+import com.ngtv.neodroid.ui.components.EmptyState
+import com.ngtv.neodroid.ui.components.NeodroidTopBar
+import com.ngtv.neodroid.ui.components.StatusDot
 import com.ngtv.neodroid.ui.theme.Spacing
 import com.ngtv.neodroid.ui.theme.neodroidColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionsScreen(
     sessionManager: SshSessionManager,
@@ -55,45 +50,20 @@ fun ConnectionsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("←", style = MaterialTheme.typography.titleLarge)
-                    }
-                },
-                title = {
-                    Text("Connections")
-                },
+            NeodroidTopBar(
+                title = "Connections",
+                onBack = onBack,
             )
         },
     ) { innerPadding ->
         if (connections.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(Spacing.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "No active connections",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "Open a host to start a new SSH connection.",
-                        modifier = Modifier.padding(top = Spacing.xs),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            EmptyState(
+                title = "No active connections",
+                message = "Open a host to start a new SSH connection.",
+                modifier = Modifier.padding(innerPadding),
+                titleStyle = MaterialTheme.typography.titleMedium,
+                titleColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -147,7 +117,7 @@ private fun ConnectionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen),
+            .clickable(role = Role.Button, onClick = onOpen),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
         ),
@@ -169,14 +139,7 @@ private fun ConnectionCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .background(
-                            color = statusColor,
-                            shape = CircleShape,
-                        ),
-                )
+                StatusDot(color = statusColor)
                 Spacer(modifier = Modifier.width(Spacing.xs))
                 Text(
                     text = statusText,

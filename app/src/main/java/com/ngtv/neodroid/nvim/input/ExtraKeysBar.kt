@@ -20,6 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.ui.theme.Spacing
 
@@ -91,7 +94,12 @@ private fun ExtraKeyButton(key: ExtraKey, active: Boolean, onClick: () -> Unit) 
             .height(EXTRA_KEY_HEIGHT)
             .clip(MaterialTheme.shapes.small)
             .background(background)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics {
+                if (key.action is ExtraKeyAction.Modifier) {
+                    this.selected = active
+                }
+            }
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center,
     ) {

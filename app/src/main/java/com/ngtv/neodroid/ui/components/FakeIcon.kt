@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.sharedComponents
+package com.ngtv.neodroid.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme

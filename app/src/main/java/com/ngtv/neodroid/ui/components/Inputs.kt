@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.sharedComponents
+package com.ngtv.neodroid.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
@@ -14,6 +14,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -109,6 +111,13 @@ fun PasswordInput(
                 enabled = enabled,
                 onClick = {
                     passwordVisible = !passwordVisible
+                },
+                modifier = Modifier.semantics {
+                    contentDescription = if (passwordVisible) {
+                        "Hide password"
+                    } else {
+                        "Show password"
+                    }
                 },
             ) {
                 Text(

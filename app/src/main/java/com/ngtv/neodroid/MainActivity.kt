@@ -25,11 +25,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.ngtv.neodroid.main.navigation.MainNavigation
 import com.ngtv.neodroid.security.KeystoreStatus
 import com.ngtv.neodroid.service.SshManagerService
 import com.ngtv.neodroid.settings.Settings
 import com.ngtv.neodroid.settings.rememberSettingsRepository
+import com.ngtv.neodroid.ui.navigation.MainNavigation
 import com.ngtv.neodroid.ui.theme.NeodroidTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch

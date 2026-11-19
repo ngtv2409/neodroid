@@ -1,4 +1,4 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.authkeys
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
@@ -25,8 +25,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ngtv.neodroid.database.AuthKeyEntity
-import com.ngtv.neodroid.security.AuthKeyAlgorithm
-import com.ngtv.neodroid.security.sshPublicKeyFingerprint
 import com.ngtv.neodroid.ui.theme.Spacing
 
 @Composable
@@ -166,15 +164,3 @@ private fun AuthKeyMenuItem(
         },
     )
 }
-
-internal fun authKeyDisplayName(key: AuthKeyEntity): String =
-    key.displayName.ifBlank { AuthKeyAlgorithm.displayName(key.algorithm) }
-
-internal fun authKeySummary(key: AuthKeyEntity): String {
-    val algorithm = AuthKeyAlgorithm.displayName(key.algorithm)
-    val fingerprint = authKeyFingerprint(key) ?: return algorithm
-    return "$algorithm • $fingerprint"
-}
-
-internal fun authKeyFingerprint(key: AuthKeyEntity): String? =
-    sshPublicKeyFingerprint(key.publicKey)

@@ -1,8 +1,6 @@
-package com.ngtv.neodroid.main.screens
+package com.ngtv.neodroid.ui.screens.workspace
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
@@ -28,7 +26,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -44,7 +41,7 @@ import com.ngtv.neodroid.nvim.render.NvimInputView
 import com.ngtv.neodroid.sshUtils.NvimTool
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import com.ngtv.neodroid.sshUtils.WorkspaceTool
-import com.ngtv.neodroid.ui.theme.Spacing
+import com.ngtv.neodroid.ui.components.EmptyState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -275,29 +272,15 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
 
 @Composable
 private fun EmptyWorkspace(onAddSession: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(Spacing.xl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = "No session open",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "Start a Neovim session to begin editing.",
-            modifier = Modifier.padding(top = Spacing.xs),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Button(
-            onClick = onAddSession,
-            modifier = Modifier.padding(top = Spacing.lg),
-        ) {
-            Text("New session")
-        }
-    }
+    EmptyState(
+        title = "No session open",
+        message = "Start a Neovim session to begin editing.",
+        titleStyle = MaterialTheme.typography.titleMedium,
+        titleColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        action = {
+            Button(onClick = onAddSession) {
+                Text("New session")
+            }
+        },
+    )
 }
