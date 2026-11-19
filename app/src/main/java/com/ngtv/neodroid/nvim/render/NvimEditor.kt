@@ -10,7 +10,6 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,8 +32,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -60,15 +57,11 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun NvimEditor(
     frame: NvimFrame,
-    onInput: (String) -> Unit,
     onResize: suspend (width: Int, height: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
-
-    val context = LocalContext.current
-    val inputView = remember(context) { NvimInputView(context) }
 
     val baseTextStyle = remember {
         TextStyle(
@@ -96,12 +89,7 @@ fun NvimEditor(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(frame.defaultColors.background)
-            .pointerInput(inputView) {
-                detectTapGestures {
-                    inputView.focusAndShowKeyboard()
-                }
-            },
+            .background(frame.defaultColors.background),
     ) {
         val columns = (maxWidth / cellWidth).toInt().coerceAtLeast(1)
         val visibleRows = (maxHeight / cellHeight).toInt().coerceAtLeast(1)
@@ -156,11 +144,6 @@ fun NvimEditor(
                 )
             }
         }
-
-        NvimInputCapture(
-            view = inputView,
-            onInput = onInput,
-        )
     }
 }
 
@@ -392,7 +375,7 @@ private fun Color.orElse(fallback: Color): Color = if (this == Color.Unspecified
  * This mirrors Termux-app TerminalView's approach and keyboard configs
  */
 @Composable
-private fun NvimInputCapture(view: NvimInputView, onInput: (String) -> Unit) {
+internal fun NvimInputCapture(view: NvimInputView, onInput: (String) -> Unit) {
     AndroidView(
         factory = { view },
         update = { it.onInput = onInput },
@@ -402,7 +385,7 @@ private fun NvimInputCapture(view: NvimInputView, onInput: (String) -> Unit) {
     )
 }
 
-private class NvimInputView(context: Context) : View(context) {
+internal class NvimInputView(context: Context) : View(context) {
     var onInput: (String) -> Unit = {}
 
     init {
@@ -416,6 +399,12 @@ private class NvimInputView(context: Context) : View(context) {
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.showSoftInput(this, 0)
         }
+    }
+
+    fun giveUpFocus() {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(windowToken, 0)
+        clearFocus()
     }
 
     override fun onCheckIsTextEditor(): Boolean = true

@@ -20,6 +20,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -29,11 +30,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.nvim.input.ExtraKeyAction
 import com.ngtv.neodroid.nvim.input.rememberExtraKeysState
 import com.ngtv.neodroid.nvim.render.NvimEditor
+import com.ngtv.neodroid.nvim.render.NvimInputCapture
+import com.ngtv.neodroid.nvim.render.NvimInputView
 import com.ngtv.neodroid.sshUtils.NvimTool
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import com.ngtv.neodroid.sshUtils.WorkspaceTool
@@ -58,6 +65,24 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     val pagerState = rememberPagerState(initialPage = initialIndex) { session.tools.size }
     val currentTool = session.tools.getOrNull(selectedIndex)
     val extraKeysState = rememberExtraKeysState()
+
+    val context = LocalContext.current
+    val inputView = remember(context) { NvimInputView(context) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, inputView) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                inputView.giveUpFocus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            inputView.giveUpFocus()
+        }
+    }
 
     var showCreateSession by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -174,6 +199,7 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
                     }
                 },
                 onBack = onBack,
+                onOpenKeyboard = { inputView.focusAndShowKeyboard() },
                 extraKeysState = extraKeysState,
             )
         },
@@ -209,11 +235,6 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
                                     .collectAsStateWithLifecycle()
                                 NvimEditor(
                                     frame = frame,
-                                    onInput = { input ->
-                                        tool.nvimSession.sendInput(
-                                            extraKeysState.applyToInput(input),
-                                        )
-                                    },
                                     onResize = { width, height ->
                                         tool.nvimSession.resize(width, height)
                                     },
@@ -225,6 +246,16 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
                     }
                 }
             }
+
+            NvimInputCapture(
+                view = inputView,
+                onInput = { input ->
+                    val tool = currentTool as? NvimTool
+                    tool?.nvimSession?.sendInput(
+                        extraKeysState.applyToInput(input),
+                    )
+                },
+            )
         }
     }
 

@@ -47,6 +47,7 @@ internal fun WorkspaceControlBar(
     onAddTool: () -> Unit,
     onKeyAction: (ExtraKeyAction) -> Unit,
     onBack: () -> Unit,
+    onOpenKeyboard: () -> Unit,
     modifier: Modifier = Modifier,
     extraKeysState: ExtraKeysState = rememberExtraKeysState(),
 ) {
@@ -72,6 +73,21 @@ internal fun WorkspaceControlBar(
             ) {
                 Text(
                     text = "<",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Spacer(modifier = Modifier.width(Spacing.xxs))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable(onClick = onOpenKeyboard),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "KB",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
