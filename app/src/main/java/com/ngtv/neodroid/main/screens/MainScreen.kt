@@ -67,6 +67,16 @@ private fun homeTopBarColors() = TopAppBarDefaults.topAppBarColors(
 )
 
 @Composable
+private fun SettingsButton(onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.semantics { contentDescription = "Settings" },
+    ) {
+        FakeIcon()
+    }
+}
+
+@Composable
 fun HomeScreen(
     viewModel: SSHHostViewModel,
     sessionManager: SshSessionManager,
@@ -76,6 +86,7 @@ fun HomeScreen(
     onOpenConnection: (String) -> Unit,
     onShowAllConnections: () -> Unit,
     onOpenAuthKeys: () -> Unit,
+    onOpenSettings: () -> Unit,
     authKeys: List<AuthKeyEntity> = emptyList(),
 ) {
     val hosts by viewModel.hosts.collectAsStateWithLifecycle()
@@ -98,6 +109,7 @@ fun HomeScreen(
                 onOpenConnection = onOpenConnection,
                 onShowAllConnections = onShowAllConnections,
                 onOpenAuthKeys = onOpenAuthKeys,
+                onOpenSettings = onOpenSettings,
                 onDeleteHost = { hostPendingDeletion = it },
                 authKeys = authKeys,
             )
@@ -112,6 +124,7 @@ fun HomeScreen(
                 onOpenConnection = onOpenConnection,
                 onShowAllConnections = onShowAllConnections,
                 onOpenAuthKeys = onOpenAuthKeys,
+                onOpenSettings = onOpenSettings,
                 onDeleteHost = { hostPendingDeletion = it },
             )
         }
@@ -140,6 +153,7 @@ private fun CompactHomeScreen(
     onOpenConnection: (String) -> Unit,
     onShowAllConnections: () -> Unit,
     onOpenAuthKeys: () -> Unit,
+    onOpenSettings: () -> Unit,
     onDeleteHost: (SSHHostEntity) -> Unit,
 ) {
     Scaffold(
@@ -153,6 +167,7 @@ private fun CompactHomeScreen(
                     IconButton(onClick = onOpenAuthKeys) {
                         FakeIcon()
                     }
+                    SettingsButton(onClick = onOpenSettings)
                 },
             )
         },
@@ -184,6 +199,7 @@ private fun SplitHomeScreen(
     onOpenConnection: (String) -> Unit,
     onShowAllConnections: () -> Unit,
     onOpenAuthKeys: () -> Unit,
+    onOpenSettings: () -> Unit,
     onDeleteHost: (SSHHostEntity) -> Unit,
     authKeys: List<AuthKeyEntity>,
 ) {
@@ -205,6 +221,7 @@ private fun SplitHomeScreen(
                     IconButton(onClick = onOpenAuthKeys) {
                         FakeIcon()
                     }
+                    SettingsButton(onClick = onOpenSettings)
                 },
             )
             HomeContent(

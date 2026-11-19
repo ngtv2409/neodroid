@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +28,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.ngtv.neodroid.main.navigation.MainNavigation
 import com.ngtv.neodroid.security.KeystoreStatus
 import com.ngtv.neodroid.service.SshManagerService
+import com.ngtv.neodroid.settings.Settings
+import com.ngtv.neodroid.settings.rememberSettingsRepository
 import com.ngtv.neodroid.ui.theme.NeodroidTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -88,7 +91,15 @@ class MainActivity : ComponentActivity() {
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         setContent {
-            NeodroidTheme {
+            val settings = rememberSettingsRepository()
+            val themeMode by settings.getAsFlow(Settings.themeMode)
+                .collectAsStateWithLifecycle(initialValue = Settings.themeMode.defaultValue)
+            val isDarkMode = if (themeMode == "system") {
+                isSystemInDarkTheme()
+            } else {
+                themeMode == "dark"
+            }
+            NeodroidTheme(isDarkMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,

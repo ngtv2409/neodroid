@@ -22,6 +22,7 @@ import com.ngtv.neodroid.main.screens.AuthKeyManagerScreen
 import com.ngtv.neodroid.main.screens.ConnectionsScreen
 import com.ngtv.neodroid.main.screens.DetailHostScreen
 import com.ngtv.neodroid.main.screens.HomeScreen
+import com.ngtv.neodroid.main.screens.SettingScreen
 import com.ngtv.neodroid.main.screens.SshSessionScreen
 import com.ngtv.neodroid.main.screens.WorkspacePrepareClient
 import com.ngtv.neodroid.sshUtils.SshSessionManager
@@ -57,7 +58,15 @@ fun MainNavigation(container: AppContainer, sessionManager: SshSessionManager) {
                 onOpenAuthKeys = {
                     navController.navigate("auth-keys")
                 },
+                onOpenSettings = {
+                    navController.navigate("settings")
+                },
                 authKeys = authKeys,
+            )
+        }
+        composable("settings") {
+            SettingScreen(
+                onBack = dropUnlessResumed { navController.popBackStack() },
             )
         }
         composable("auth-keys") {

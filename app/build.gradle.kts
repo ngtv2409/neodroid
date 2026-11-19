@@ -68,6 +68,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.navigation:navigation-compose:2.10.2")
+    implementation("androidx.datastore:datastore-preferences:1.3.0")
 
     val roomVersion = "2.8.5"
     implementation("androidx.room:room-runtime:$roomVersion")
