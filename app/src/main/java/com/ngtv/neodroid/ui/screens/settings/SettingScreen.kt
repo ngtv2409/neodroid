@@ -25,6 +25,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,10 +44,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.R
 import com.ngtv.neodroid.settings.Setting
 import com.ngtv.neodroid.settings.SettingsCatalog
 import com.ngtv.neodroid.settings.SettingsCategory
@@ -168,10 +171,10 @@ private fun SettingsListPane(
                         )
                     },
                     trailingContent = {
-                        Text(
-                            text = "›",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Icon(
+                            painter = painterResource(R.drawable.ic_chevron_right),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
                     onClick = { onSelectCategory(category) },
@@ -342,9 +345,10 @@ private fun ChoiceSettingRow(setting: Setting.Choice, repository: SettingsReposi
                     text = selectedLabel,
                     style = MaterialTheme.typography.labelLarge,
                 )
-                Text(
-                    text = " ▾",
-                    style = MaterialTheme.typography.labelMedium,
+                Icon(
+                    painter = painterResource(R.drawable.ic_expand_more),
+                    contentDescription = null,
+                    modifier = Modifier.padding(start = Spacing.xs),
                 )
             }
 
@@ -434,10 +438,10 @@ private fun NumberSettingRow(setting: Setting.Number, repository: SettingsReposi
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
         )
-        Text(
-            text = "›",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Icon(
+            painter = painterResource(R.drawable.ic_chevron_right),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 

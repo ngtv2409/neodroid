@@ -2,12 +2,14 @@
 
 package com.ngtv.neodroid.ui.screens.home
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -19,11 +21,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
@@ -33,7 +38,6 @@ import com.ngtv.neodroid.ui.components.ActionMenuItem
 import com.ngtv.neodroid.ui.components.CompactListItem
 import com.ngtv.neodroid.ui.components.ConfirmDeleteDialog
 import com.ngtv.neodroid.ui.components.EmptyState
-import com.ngtv.neodroid.ui.components.FakeIcon
 import com.ngtv.neodroid.ui.components.HintText
 import com.ngtv.neodroid.ui.components.ListSectionHeader
 import com.ngtv.neodroid.ui.components.NeodroidTopBar
@@ -54,13 +58,19 @@ private fun HomeTopBarActions(onOpenAuthKeys: () -> Unit, onOpenSettings: () -> 
         onClick = onOpenAuthKeys,
         modifier = Modifier.semantics { contentDescription = "Authentication keys" },
     ) {
-        FakeIcon()
+        Icon(
+            painter = painterResource(R.drawable.ic_key),
+            contentDescription = null,
+        )
     }
     IconButton(
         onClick = onOpenSettings,
         modifier = Modifier.semantics { contentDescription = "Settings" },
     ) {
-        FakeIcon()
+        Icon(
+            painter = painterResource(R.drawable.ic_settings),
+            contentDescription = null,
+        )
     }
 }
 
@@ -344,11 +354,18 @@ private fun OnlineConnectionRow(connection: SshConnection, onClick: () -> Unit) 
             )
         },
         trailingContent = {
-            Text(
-                text = "${workspaces.size} ws  ›",
-                style = MaterialTheme.typography.labelMedium,
-                color = LocalContentColor.current.copy(alpha = 0.7f),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "${workspaces.size} ws",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LocalContentColor.current.copy(alpha = 0.7f),
+                )
+                Icon(
+                    painter = painterResource(R.drawable.ic_chevron_right),
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.7f),
+                )
+            }
         },
         onClick = onClick,
     )
@@ -417,10 +434,10 @@ private fun HostRow(
             )
         },
         trailingContent = {
-            Text(
-                text = "›",
-                style = MaterialTheme.typography.titleMedium,
-                color = LocalContentColor.current.copy(alpha = 0.7f),
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron_right),
+                contentDescription = null,
+                tint = LocalContentColor.current.copy(alpha = 0.7f),
             )
         },
         menuActions = listOf(

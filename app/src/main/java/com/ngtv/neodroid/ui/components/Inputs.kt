@@ -2,6 +2,7 @@ package com.ngtv.neodroid.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -14,11 +15,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import com.ngtv.neodroid.R
 
 @Composable
 fun ValidatedTextField(
@@ -120,9 +123,15 @@ fun PasswordInput(
                     }
                 },
             ) {
-                Text(
-                    text = if (passwordVisible) "Hide" else "Show",
-                    style = MaterialTheme.typography.labelMedium,
+                Icon(
+                    painter = painterResource(
+                        if (passwordVisible) {
+                            R.drawable.ic_visibility_off
+                        } else {
+                            R.drawable.ic_visibility
+                        },
+                    ),
+                    contentDescription = null,
                 )
             }
         },

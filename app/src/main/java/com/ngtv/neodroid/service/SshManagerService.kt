@@ -10,6 +10,7 @@ import android.os.Binder
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.ngtv.neodroid.NeodroidApplication
+import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.SSHHostRepository
 import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshConnectionHistory
@@ -135,12 +136,12 @@ class SshManagerService : Service() {
         )
 
         return NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setSmallIcon(R.drawable.ic_terminal)
             .setContentTitle("Neodroid")
             .setContentText(message)
             .setOngoing(true)
             .addAction(
-                android.R.drawable.ic_media_pause,
+                R.drawable.ic_stop,
                 "Stop",
                 stopPendingIntent,
             )

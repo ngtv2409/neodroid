@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,11 +25,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ngtv.neodroid.R
 import com.ngtv.neodroid.nvim.input.DefaultExtraKeys
 import com.ngtv.neodroid.nvim.input.ExtraKeyAction
 import com.ngtv.neodroid.nvim.input.ExtraKeysBar
@@ -66,13 +69,13 @@ internal fun WorkspaceControlBar(
             )
             Spacer(modifier = Modifier.width(Spacing.xxs))
             RoundToolButton(
-                label = "<",
+                icon = painterResource(R.drawable.ic_arrow_back),
                 contentDescription = "Back",
                 onClick = onBack,
             )
             Spacer(modifier = Modifier.width(Spacing.xxs))
             RoundToolButton(
-                label = "KB",
+                icon = painterResource(R.drawable.ic_keyboard),
                 contentDescription = "Show keyboard",
                 onClick = onOpenKeyboard,
             )
@@ -120,10 +123,13 @@ private fun SessionSwitcher(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = " ▾",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Icon(
+                painter = painterResource(R.drawable.ic_expand_more),
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(start = Spacing.xxs)
+                    .size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -148,10 +154,12 @@ private fun SessionSwitcher(
                             )
                         },
                         leadingIcon = {
-                            Text(
-                                text = if (tool.id == currentTool?.id) "✓" else " ",
-                                style = MaterialTheme.typography.labelMedium,
-                            )
+                            if (tool.id == currentTool?.id) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_check),
+                                    contentDescription = null,
+                                )
+                            }
                         },
                         trailingIcon = {
                             IconButton(
@@ -165,7 +173,10 @@ private fun SessionSwitcher(
                                     onClose(tool)
                                 },
                             ) {
-                                Text("×")
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_close),
+                                    contentDescription = null,
+                                )
                             }
                         },
                         onClick = {
@@ -182,7 +193,7 @@ private fun SessionSwitcher(
 @Composable
 private fun AddSessionButton(onClick: () -> Unit) {
     RoundToolButton(
-        label = "+",
+        icon = painterResource(R.drawable.ic_add),
         contentDescription = "New session",
         onClick = onClick,
     )

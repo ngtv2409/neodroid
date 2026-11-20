@@ -3,6 +3,7 @@ package com.ngtv.neodroid.ui.components
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -11,9 +12,11 @@ import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import com.ngtv.neodroid.R
 
 @Composable
 fun neodroidTopBarColors(): TopAppBarColors = TopAppBarDefaults.topAppBarColors(
@@ -29,7 +32,10 @@ fun BackButton(onClick: () -> Unit) {
         onClick = onClick,
         modifier = Modifier.semantics { contentDescription = "Back" },
     ) {
-        Text("←", style = MaterialTheme.typography.titleLarge)
+        Icon(
+            painter = painterResource(R.drawable.ic_arrow_back),
+            contentDescription = null,
+        )
     }
 }
 

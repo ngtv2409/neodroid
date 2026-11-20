@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -46,6 +49,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.AuthKeyCreationState
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.AuthKeyViewModel
@@ -224,7 +228,10 @@ private fun AuthKeyTopBar(
                         contentDescription = "Add auth key"
                     },
                 ) {
-                    Text("+", style = MaterialTheme.typography.titleLarge)
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add),
+                        contentDescription = null,
+                    )
                 }
             }
         },
@@ -320,10 +327,10 @@ private fun AuthKeyRow(
             }
         },
         trailingContent = {
-            Text(
-                text = "›",
-                style = MaterialTheme.typography.titleMedium,
-                color = LocalContentColor.current.copy(alpha = 0.7f),
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron_right),
+                contentDescription = null,
+                tint = LocalContentColor.current.copy(alpha = 0.7f),
             )
         },
         menuActions = listOf(
@@ -526,6 +533,16 @@ private fun AuthKeyDetailScreen(
                         }
                     },
                 ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_content_copy),
+                        contentDescription = null,
+                        tint = if (copied) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                    )
+                    Spacer(modifier = Modifier.width(Spacing.xxs))
                     if (copied) {
                         Text("Copied", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
