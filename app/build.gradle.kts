@@ -79,4 +79,6 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-tooling-preview")
+
+    testImplementation("junit:junit:4.13.2")
 }

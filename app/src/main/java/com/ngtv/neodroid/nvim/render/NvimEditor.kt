@@ -32,6 +32,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -54,6 +56,7 @@ import com.ngtv.neodroid.nvim.input.NvimGestureView
 import com.ngtv.neodroid.nvim.input.NvimMouseEvent
 import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -210,8 +213,7 @@ private fun NvimTextSegment(
     cellWidth: Dp,
     cellHeight: Dp,
 ) {
-    val density = LocalDensity.current
-    val width = with(density) { segment.layout.size.width.toDp() }
+    val targetWidth = cellWidth * segment.columns.toFloat()
 
     Box(
         modifier = Modifier.offset(
@@ -221,15 +223,37 @@ private fun NvimTextSegment(
     ) {
         Canvas(
             modifier = Modifier
-                .width(width)
+                .width(targetWidth)
                 .height(cellHeight)
                 .graphicsLayer(),
         ) {
             NvimPerf.measure(segment.kind.drawMetric) {
-                drawText(
-                    textLayoutResult = segment.layout,
-                    topLeft = Offset.Zero,
-                )
+                val targetPx = targetWidth.toPx()
+                val layoutWidth = segment.layout.size.width.toFloat()
+                if (
+                    segment.wide &&
+                    layoutWidth > 0f &&
+                    abs(targetPx - layoutWidth) > 0.5f
+                ) {
+                    // Neovim reserves two cells for a wide glyph. Android's
+                    // fallback font may not have exactly that advance, so fit
+                    // the glyph to its cell box to keep the grid aligned.
+                    scale(
+                        scaleX = targetPx / layoutWidth,
+                        scaleY = 1f,
+                        pivot = Offset.Zero,
+                    ) {
+                        drawText(
+                            textLayoutResult = segment.layout,
+                            topLeft = Offset.Zero,
+                        )
+                    }
+                } else {
+                    drawText(
+                        textLayoutResult = segment.layout,
+                        topLeft = Offset.Zero,
+                    )
+                }
             }
         }
     }
@@ -242,6 +266,7 @@ private data class CursorVisual(
     val textColor: Color,
     val textStyle: SpanStyle,
     val glyph: String?,
+    val cellColumns: Int,
 )
 
 @Composable
@@ -278,15 +303,35 @@ private fun NvimCursorOverlay(
         val x = frame.cursor.col * width
         val y = frame.cursor.row * height
         val fraction = visual.percentage / 100f
+        val cursorCellWidth = width * visual.cellColumns
 
         when (visual.shape) {
             CursorShape.BLOCK -> {
                 drawRect(
                     color = visual.fill,
                     topLeft = Offset(x, y),
-                    size = Size(width, height),
+                    size = Size(cursorCellWidth, height),
                 )
-                glyphLayout?.let { drawText(textLayoutResult = it, topLeft = Offset(x, y)) }
+                glyphLayout?.let { glyph ->
+                    val glyphWidth = glyph.size.width.toFloat()
+                    if (
+                        visual.cellColumns > 1 &&
+                        glyphWidth > 0f &&
+                        abs(cursorCellWidth - glyphWidth) > 0.5f
+                    ) {
+                        translate(left = x, top = y) {
+                            scale(
+                                scaleX = cursorCellWidth / glyphWidth,
+                                scaleY = 1f,
+                                pivot = Offset.Zero,
+                            ) {
+                                drawText(textLayoutResult = glyph, topLeft = Offset.Zero)
+                            }
+                        }
+                    } else {
+                        drawText(textLayoutResult = glyph, topLeft = Offset(x, y))
+                    }
+                }
             }
 
             CursorShape.HORIZONTAL -> {
@@ -294,7 +339,7 @@ private fun NvimCursorOverlay(
                 drawRect(
                     color = visual.fill,
                     topLeft = Offset(x, y + height - cursorHeight),
-                    size = Size(width, cursorHeight),
+                    size = Size(cursorCellWidth, cursorHeight),
                 )
             }
 
@@ -365,9 +410,10 @@ private fun NvimFrame.cursorVisual(): CursorVisual {
         else -> cellBackground
     }
 
+    val cellColumns = if (span?.wide == true) span.columns else 1
     val glyph = if (shape == CursorShape.BLOCK && span != null) {
         val offset = cursor.col - span.startCol
-        span.text.getOrNull(offset)?.takeUnless { it == ' ' }?.toString()
+        span.cellTextAt(offset)?.takeUnless { it == " " }
     } else {
         null
     }
@@ -379,6 +425,7 @@ private fun NvimFrame.cursorVisual(): CursorVisual {
         textColor = textColor,
         textStyle = cellStyle,
         glyph = glyph,
+        cellColumns = cellColumns,
     )
 }
 

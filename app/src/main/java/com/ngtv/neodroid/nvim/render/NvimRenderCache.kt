@@ -44,7 +44,8 @@ internal class SegmentKey(private val startCol: Int, private val spans: List<Tex
             if (
                 left.text != right.text ||
                 left.hlId != right.hlId ||
-                left.columns != right.columns
+                left.columns != right.columns ||
+                left.wide != right.wide
             ) {
                 return false
             }
@@ -58,7 +59,9 @@ internal class SegmentKey(private val startCol: Int, private val spans: List<Tex
 internal class RenderedSegment(
     val key: SegmentKey,
     val startCol: Int,
+    val columns: Int,
     val kind: SegmentKind,
+    val wide: Boolean,
     val layout: TextLayoutResult,
 )
 
@@ -186,7 +189,7 @@ internal class NvimRenderCache {
         val width = row.columns
         if (width <= 0) return emptyList()
 
-        val cuts = ArrayList<Int>(6)
+        val cuts = sortedSetOf<Int>()
         cuts.add(0)
         if (gutterEnd in 1 until width) cuts.add(gutterEnd)
 
@@ -196,14 +199,27 @@ internal class NvimRenderCache {
             cuts.add(dirtyStart)
             cuts.add(dirtyEnd)
         }
+
+        val wideSpans = row.spans.filter { it.wide }
+        wideSpans.forEach { span ->
+            cuts.add(span.startCol)
+            cuts.add(span.endCol)
+        }
+        if (wideSpans.isNotEmpty()) {
+            cuts.removeAll(
+                cuts.filter { cut ->
+                    wideSpans.any { cut > it.startCol && cut < it.endCol }
+                },
+            )
+        }
+
         cuts.add(width)
-        cuts.sort()
 
         val ranges = ArrayList<IntRange>(cuts.size - 1)
-        for (index in 1 until cuts.size) {
-            val start = cuts[index - 1]
-            val end = cuts[index]
+        var start = cuts.first()
+        for (end in cuts) {
             if (end > start) ranges.add(start until end)
+            start = end
         }
         return ranges
     }
@@ -228,7 +244,9 @@ internal class NvimRenderCache {
         val segment = cache[key] ?: RenderedSegment(
             key = key,
             startCol = startCol,
+            columns = endCol - startCol,
             kind = kind,
+            wide = spans.any { it.wide },
             layout = NvimPerf.measure(kind.measureMetric) {
                 measureSegment(spans, frame, textMeasurer, baseStyle)
             },
@@ -244,6 +262,8 @@ internal class NvimRenderCache {
      */
     private fun gutterEndCol(row: TextRow): Int {
         row.spans.forEach { span ->
+            if (span.wide) return span.startCol.coerceIn(0, row.columns)
+
             span.text.forEachIndexed { index, char ->
                 if (!char.isDigit() && !char.isWhitespace()) {
                     return (span.startCol + index).coerceIn(0, row.columns)

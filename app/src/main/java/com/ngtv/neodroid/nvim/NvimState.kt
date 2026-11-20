@@ -11,33 +11,50 @@ import com.ngtv.neodroid.core.events.ModeProperty
 import com.ngtv.neodroid.core.events.NvimUiEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.text.BreakIterator
 import java.util.ArrayList
 
 data class CursorState(val row: Int = 0, val col: Int = 0)
 
 /**
- * A collection of text with the same hl group
+ * A collection of text with the same hl group.
+ *
+ * columns is the number of grid cells occupied by text.
+ * In Neovim's `ext_linegrid` protocol a double-width character is sent in its left cell and the following cell contains an empty string.
+ * We merge that filler into a single wide span occupying two columns
  */
 @Immutable
-class TextSpan(val startCol: Int, val columns: Int, val text: String, val hlId: Int) {
+class TextSpan(
+    val startCol: Int,
+    val columns: Int,
+    val text: String,
+    val hlId: Int,
+    val wide: Boolean = false,
+) {
     val endCol: Int
         get() = startCol + columns
 
-    val layoutHash: Int = 31 * text.hashCode() + hlId
+    val layoutHash: Int = 31 * (31 * text.hashCode() + hlId) + if (wide) 1 else 0
 
     /**
      * Extracts columns [start, end) from this span.
      *
-     * Neovim cells are one column per grid cell. The text is assumed to have one
-     * character per column; wide characters ignored (for now)
+     * Narrow text is split at grapheme cluster boundaries so combining marks and
+     * surrogate pairs belong to their cell.
+     * A wide character cannot be split: overlap returns null, caller fills the gap with a blank cell.
      */
     fun slice(start: Int, end: Int): TextSpan? {
         val from = maxOf(start, startCol)
         val to = minOf(end, endCol)
         if (from >= to) return null
 
-        val fromOffset = (from - startCol).coerceIn(0, text.length)
-        val toOffset = (to - startCol).coerceIn(fromOffset, text.length)
+        if (wide) {
+            return if (from == startCol && to == endCol) this else null
+        }
+
+        val fromOffset = charOffsetAt(from - startCol)
+        val toOffset = charOffsetAt(to - startCol)
+        if (fromOffset >= toOffset) return null
 
         return TextSpan(
             startCol = from,
@@ -45,6 +62,35 @@ class TextSpan(val startCol: Int, val columns: Int, val text: String, val hlId: 
             text = text.substring(fromOffset, toOffset),
             hlId = hlId,
         )
+    }
+
+    /**
+     * Returns the text of the cell at offset, or null when offset is not a cell in this span.
+     */
+    fun cellTextAt(offset: Int): String? {
+        if (offset !in 0 until columns) return null
+        if (wide) return if (offset == 0) text else null
+
+        val from = charOffsetAt(offset)
+        val to = if (offset + 1 >= columns) text.length else charOffsetAt(offset + 1)
+        return if (from < to) text.substring(from, to) else null
+    }
+
+    private fun charOffsetAt(columnOffset: Int): Int {
+        val offset = columnOffset.coerceIn(0, columns)
+        if (offset == 0) return 0
+        if (offset == columns) return text.length
+        if (text.length == columns) return offset
+
+        val iterator = BreakIterator.getCharacterInstance()
+        iterator.setText(text)
+        var cluster = 0
+        var position = iterator.first()
+        while (position != BreakIterator.DONE && cluster < offset) {
+            position = iterator.next()
+            cluster++
+        }
+        return if (position == BreakIterator.DONE) text.length else position
     }
 
     companion object {
@@ -123,6 +169,7 @@ class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd:
                                 columns = slice.columns,
                                 text = slice.text,
                                 hlId = slice.hlId,
+                                wide = slice.wide,
                             )
                         },
                     )
@@ -132,6 +179,10 @@ class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd:
 
         return result
     }
+
+    fun spanAt(column: Int): TextSpan? = spans.firstOrNull { column in it.startCol until it.endCol }
+
+    fun spanEndingAt(column: Int): TextSpan? = spans.firstOrNull { it.endCol == column }
 
     companion object {
         fun blank(width: Int): TextRow {
@@ -168,7 +219,13 @@ class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd:
                 }
 
                 val last = result.lastOrNull()
-                if (last != null && last.hlId == current.hlId && last.endCol == current.startCol) {
+                if (
+                    last != null &&
+                    !last.wide &&
+                    !current.wide &&
+                    last.hlId == current.hlId &&
+                    last.endCol == current.startCol
+                ) {
                     result[result.lastIndex] = TextSpan(
                         startCol = last.startCol,
                         columns = last.columns + current.columns,
@@ -314,10 +371,17 @@ class NvimStateActor {
         val rowIndex = event.row.toInt()
         if (rowIndex !in rows.indices) return
 
+        val row = rows[rowIndex]
         val startCol = event.col_start.toInt().coerceAtLeast(0)
-        val replacement = ArrayList<TextSpan>(event.cells.size)
+        val replacement = ArrayList<TextSpan>(event.cells.size + 1)
+        var replacementStart = Int.MAX_VALUE
         var lastHlId = -1
         var col = startCol
+
+        fun add(span: TextSpan) {
+            replacement.add(span)
+            replacementStart = minOf(replacementStart, span.startCol)
+        }
 
         event.cells.forEach { cell ->
             val hlId = (cell.hl_id ?: lastHlId).toInt()
@@ -326,7 +390,49 @@ class NvimStateActor {
             val repeat = cell.repeat?.toInt() ?: 1
             if (repeat <= 0) return@forEach
 
-            replacement.add(
+            if (cell.text.isEmpty()) {
+                val previous = replacement.lastOrNull()?.takeIf { it.endCol == col }
+                if (previous != null) {
+                    if (!previous.wide) {
+                        replacement[replacement.lastIndex] = TextSpan(
+                            startCol = previous.startCol,
+                            columns = previous.columns + repeat,
+                            text = previous.text,
+                            hlId = previous.hlId,
+                            wide = true,
+                        )
+                    }
+                } else {
+                    val existing = row.spanEndingAt(col)
+                    if (existing != null) {
+                        if (!existing.wide) {
+                            splitLastCellForWide(existing)?.let { (prefix, wide) ->
+                                prefix?.let(::add)
+                                if (repeat == 1) {
+                                    add(wide)
+                                } else {
+                                    add(
+                                        TextSpan(
+                                            startCol = wide.startCol,
+                                            columns = wide.columns + repeat - 1,
+                                            text = wide.text,
+                                            hlId = wide.hlId,
+                                            wide = true,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    } else if (row.spanAt(col) == null) {
+                        add(TextSpan.blank(col, repeat))
+                    }
+                }
+
+                col += repeat
+                return@forEach
+            }
+
+            add(
                 TextSpan(
                     startCol = col,
                     columns = repeat,
@@ -338,7 +444,7 @@ class NvimStateActor {
         }
 
         if (replacement.isNotEmpty()) {
-            rows[rowIndex] = rows[rowIndex].patch(startCol, replacement)
+            rows[rowIndex] = row.patch(replacementStart, replacement)
         }
     }
 
@@ -410,6 +516,51 @@ class NvimStateActor {
             }
         }
     }
+}
+
+private fun splitLastCellForWide(span: TextSpan): Pair<TextSpan?, TextSpan>? {
+    if (span.wide) return null
+
+    val lastStart = span.text.lastClusterStart()
+    if (lastStart <= 0) {
+        return null to TextSpan(
+            startCol = span.startCol,
+            columns = span.columns + 1,
+            text = span.text,
+            hlId = span.hlId,
+            wide = true,
+        )
+    }
+
+    val prefixColumns = (span.columns - 1).coerceAtLeast(0)
+    val prefix = if (prefixColumns > 0) {
+        TextSpan(
+            startCol = span.startCol,
+            columns = prefixColumns,
+            text = span.text.substring(0, lastStart),
+            hlId = span.hlId,
+        )
+    } else {
+        null
+    }
+    val wide = TextSpan(
+        startCol = span.startCol + prefixColumns,
+        columns = span.columns - prefixColumns + 1,
+        text = span.text.substring(lastStart),
+        hlId = span.hlId,
+        wide = true,
+    )
+    return prefix to wide
+}
+
+private fun String.lastClusterStart(): Int {
+    if (isEmpty()) return 0
+
+    val iterator = BreakIterator.getCharacterInstance()
+    iterator.setText(this)
+    iterator.last()
+    val previous = iterator.previous()
+    return if (previous == BreakIterator.DONE) 0 else previous
 }
 
 fun nvimRgbColor(rgb: Long): Color = Color(rgb.toInt() or 0xFF000000.toInt())
