@@ -8,14 +8,23 @@ android {
     namespace = "com.ngtv.neodroid"
     compileSdk = 37
 
-    signingConfigs {
-        create("release") {
-            storeFile = rootProject.file(
-                System.getenv("NEODROID_KEYSTORE_FILE")
-            )
-            storePassword = System.getenv("NEODROID_KEYSTORE_PASSWORD")
-            keyAlias = System.getenv("NEODROID_REL_KEY_ALIAS")
-            keyPassword = System.getenv("NEODROID_KEY_PASSWORD")
+    val releaseSigningAvailable = listOf(
+        "NEODROID_KEYSTORE_FILE",
+        "NEODROID_KEYSTORE_PASSWORD",
+        "NEODROID_REL_KEY_ALIAS",
+        "NEODROID_KEY_PASSWORD",
+    ).all { !System.getenv(it).isNullOrBlank() }
+
+    if (releaseSigningAvailable) {
+        signingConfigs {
+            create("release") {
+                storeFile = rootProject.file(
+                    System.getenv("NEODROID_KEYSTORE_FILE")!!,
+                )
+                storePassword = System.getenv("NEODROID_KEYSTORE_PASSWORD")!!
+                keyAlias = System.getenv("NEODROID_REL_KEY_ALIAS")!!
+                keyPassword = System.getenv("NEODROID_KEY_PASSWORD")!!
+            }
         }
     }
 
@@ -39,7 +48,9 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (releaseSigningAvailable) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isDebuggable = false
             resValue("string", "app_name", "Neodroid")
         }
