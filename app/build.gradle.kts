@@ -8,6 +8,17 @@ android {
     namespace = "com.ngtv.neodroid"
     compileSdk = 37
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file(
+                System.getenv("NEODROID_KEYSTORE_FILE")
+            )
+            storePassword = System.getenv("NEODROID_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("NEODROID_REL_KEY_ALIAS")
+            keyPassword = System.getenv("NEODROID_KEY_PASSWORD")
+        }
+    }
+
     // TODO: maybe just use strings xml since we may want translations
     buildFeatures {
         resValues = true
@@ -28,6 +39,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isDebuggable = false
             resValue("string", "app_name", "Neodroid")
         }
