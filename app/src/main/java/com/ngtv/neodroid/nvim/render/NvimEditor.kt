@@ -1,6 +1,7 @@
 package com.ngtv.neodroid.nvim.render
 
 import android.content.Context
+import android.graphics.Rect
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -482,6 +483,13 @@ internal fun NvimInputCapture(view: NvimInputView, onInput: (String) -> Unit) {
 internal class NvimInputView(context: Context) : View(context) {
     var onInput: (String) -> Unit = {}
 
+    // Some IMEs (Unexpected Keyboard) send modifier as a seperate key event
+    // then commit the character through commitText, which carries no meta state
+    // Need track the modifiers to apply
+    private var ctrlDown = false
+    private var altDown = false
+    private var shiftDown = false
+
     init {
         isFocusable = true
         isFocusableInTouchMode = true
@@ -511,6 +519,11 @@ internal class NvimInputView(context: Context) : View(context) {
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
 
         return object : BaseInputConnection(this@NvimInputView, true) {
+            override fun sendKeyEvent(event: KeyEvent): Boolean {
+                if (this@NvimInputView.handleKeyEvent(event)) return true
+                return super.sendKeyEvent(event)
+            }
+
             override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
                 super.commitText(text, newCursorPosition)
                 sendEditable()
@@ -533,7 +546,9 @@ internal class NvimInputView(context: Context) : View(context) {
             private fun sendEditable() {
                 val content = editable ?: return
                 if (content.isNotEmpty()) {
-                    this@NvimInputView.onInput(content.toNvimKeys())
+                    this@NvimInputView.onInput(
+                        content.toNvimKeys(ctrl = ctrlDown, alt = altDown),
+                    )
                     content.clear()
                 }
             }
@@ -541,36 +556,166 @@ internal class NvimInputView(context: Context) : View(context) {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        val keys = event.toNvimKeys() ?: return super.onKeyDown(keyCode, event)
+        if (handleKeyEvent(event)) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (handleKeyEvent(event)) return true
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun handleKeyEvent(event: KeyEvent): Boolean {
+        val down = event.action == KeyEvent.ACTION_DOWN
+        if (updateModifierState(event.keyCode, down)) return true
+        if (!down) return false
+
+        val keys = event.toNvimKeys(
+            extraCtrl = ctrlDown,
+            extraAlt = altDown,
+            extraShift = shiftDown,
+        ) ?: return false
         onInput(keys)
         return true
+    }
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        if (!gainFocus) resetModifiers()
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) resetModifiers()
+    }
+
+    private fun updateModifierState(keyCode: Int, down: Boolean): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.KEYCODE_CTRL_RIGHT -> ctrlDown = down
+            KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.KEYCODE_ALT_RIGHT -> altDown = down
+            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> shiftDown = down
+            else -> return false
+        }
+        return true
+    }
+
+    private fun resetModifiers() {
+        ctrlDown = false
+        altDown = false
+        shiftDown = false
     }
 }
 
 private val RESIZE_DEBOUNCE_MS: Duration = 100.milliseconds
 
 // nvim key notations
-private fun CharSequence.toNvimKeys(): String = buildString(length) {
-    for (char in this@toNvimKeys) {
-        when (char) {
-            '\n', '\r' -> append("<CR>")
+private fun CharSequence.toNvimKeys(ctrl: Boolean = false, alt: Boolean = false): String =
+    buildString(length) {
+        for (char in this@toNvimKeys) {
+            when {
+                char == '\n' || char == '\r' -> append("<CR>")
 
-            // A raw tab is handled consistently by both Neovim and Android IMEs.
-            '\t' -> append('\t')
+                char == '\t' -> append('\t')
 
-            '<' -> append("<LT>")
+                char == '\u001b' -> append("<Esc>")
 
-            else -> append(char)
+                // IMEs that commit Ctrl combinations as raw control bytes
+                char.code in 0..0x1f || char.code == 0x7f -> {
+                    val control = char.toNvimControlKey()
+                    if (control != null) append(control) else append(char)
+                }
+
+                ctrl || alt -> append(modifiedKeyNotation(char, ctrl, alt))
+
+                char == '<' -> append("<LT>")
+
+                else -> append(char)
+            }
         }
+    }
+
+private fun Int.toCharacter(): Char? = when (this) {
+    in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z -> 'a' + (this - KeyEvent.KEYCODE_A)
+
+    in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> '0' + (this - KeyEvent.KEYCODE_0)
+
+    in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ->
+        '0' + (this - KeyEvent.KEYCODE_NUMPAD_0)
+
+    KeyEvent.KEYCODE_GRAVE -> '`'
+
+    KeyEvent.KEYCODE_MINUS -> '-'
+
+    KeyEvent.KEYCODE_EQUALS -> '='
+
+    KeyEvent.KEYCODE_LEFT_BRACKET -> '['
+
+    KeyEvent.KEYCODE_RIGHT_BRACKET -> ']'
+
+    KeyEvent.KEYCODE_BACKSLASH -> '\\'
+
+    KeyEvent.KEYCODE_SEMICOLON -> ';'
+
+    KeyEvent.KEYCODE_APOSTROPHE -> '\''
+
+    KeyEvent.KEYCODE_SLASH -> '/'
+
+    KeyEvent.KEYCODE_AT -> '@'
+
+    KeyEvent.KEYCODE_PLUS -> '+'
+
+    KeyEvent.KEYCODE_COMMA -> ','
+
+    KeyEvent.KEYCODE_PERIOD -> '.'
+
+    KeyEvent.KEYCODE_STAR -> '*'
+
+    KeyEvent.KEYCODE_POUND -> '#'
+
+    KeyEvent.KEYCODE_SPACE -> ' '
+
+    else -> null
+}
+
+private fun Char.toNvimControlKey(): String? = when {
+    this == '\u007f' -> "<BS>"
+
+    code !in 0..0x1f -> null
+
+    else -> {
+        val name = (code + 0x40).toChar()
+        val key = if (name in 'A'..'Z') name.lowercaseChar().toString() else name.toString()
+        "<C-$key>"
     }
 }
 
-private fun KeyEvent.toNvimKeys(): String? {
+private fun modifiedKeyNotation(char: Char, ctrl: Boolean, alt: Boolean): String {
+    val prefix = buildString {
+        if (ctrl) append("C-")
+        if (alt) append("M-")
+    }
+    val key = when (char) {
+        ' ' -> "Space"
+        '<' -> "lt"
+        else -> char.toString()
+    }
+    return "<$prefix$key>"
+}
+
+private fun KeyEvent.toNvimKeys(
+    extraCtrl: Boolean = false,
+    extraAlt: Boolean = false,
+    extraShift: Boolean = false,
+): String? {
+    val ctrl = isCtrlPressed || extraCtrl
+    val alt = isAltPressed || extraAlt
+    val shift = isShiftPressed || extraShift
+
     if (
         keyCode == KeyEvent.KEYCODE_TAB &&
-        !isCtrlPressed &&
-        !isAltPressed &&
-        !isShiftPressed
+        !ctrl &&
+        !alt &&
+        !shift
     ) {
         return "\t"
     }
@@ -595,25 +740,27 @@ private fun KeyEvent.toNvimKeys(): String? {
 
     if (named != null) {
         val modifiers = buildString {
-            if (isCtrlPressed) append("C-")
-            if (isAltPressed) append("M-")
-            if (isShiftPressed) append("S-")
+            if (ctrl) append("C-")
+            if (alt) append("M-")
+            if (shift) append("S-")
         }
         return "<$modifiers$named>"
     }
 
     val unicode = unicodeChar
-    if (unicode == 0) return null
-
-    val base = if (isCtrlPressed || isAltPressed) getUnicodeChar(0) else unicode
-    if (base == 0) return null
-
-    val char = base.toChar()
-    if (Character.isISOControl(char)) return null
+    val base = if (ctrl || alt) getUnicodeChar(0) else unicode
+    val char = when {
+        base != 0 -> base.toChar()
+        else -> keyCode.toCharacter() ?: return null
+    }
+    if (Character.isISOControl(char)) {
+        // A raw control byte, like Ctrl-C as 0x03.
+        return char.toNvimControlKey()
+    }
 
     val modifiers = buildString {
-        if (isCtrlPressed) append("C-")
-        if (isAltPressed) append("M-")
+        if (ctrl) append("C-")
+        if (alt) append("M-")
     }
     val key = when (char) {
         '<' -> "lt"
