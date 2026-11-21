@@ -264,6 +264,9 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
                                     takeModifiers = {
                                         extraKeysState.takeModifierString()
                                     },
+                                    onOpenUrlError = { message ->
+                                        errorMessage = message
+                                    },
                                     fontFamily = editorFontFamily,
                                     fontSize = editorFontSizeSp,
                                     lineHeight = editorLineHeightSp,

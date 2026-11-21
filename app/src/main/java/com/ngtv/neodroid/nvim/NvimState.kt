@@ -249,6 +249,89 @@ class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd:
     }
 }
 
+@Immutable
+data class NvimHighlight(
+    val foreground: Color? = null,
+    val background: Color? = null,
+    val special: Color? = null,
+    val reverse: Boolean = false,
+    val italic: Boolean = false,
+    val bold: Boolean = false,
+    val strikethrough: Boolean = false,
+    val underline: Boolean = false,
+    val undercurl: Boolean = false,
+    val underdouble: Boolean = false,
+    val underdotted: Boolean = false,
+    val underdashed: Boolean = false,
+    val altfont: Boolean = false,
+    val dim: Boolean = false,
+    val blink: Boolean = false,
+    val conceal: Boolean = false,
+    val overline: Boolean = false,
+    val blend: Int = 0,
+    val url: String? = null,
+) {
+    val hasCustomDecoration: Boolean
+        get() = underline || undercurl || underdouble || underdotted || underdashed || overline
+
+    fun spanStyle(defaults: SpanStyle): SpanStyle {
+        val (foreground, background) = resolveColors(defaults)
+        return SpanStyle(
+            color = foreground,
+            background = background,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+            fontFeatureSettings = if (altfont) "ss01" else null,
+            textDecoration = if (strikethrough) {
+                TextDecoration.LineThrough
+            } else {
+                TextDecoration.None
+            },
+        )
+    }
+
+    fun resolvedBackground(defaults: SpanStyle): Color = resolveColors(defaults).second
+
+    fun resolvedSpecial(defaults: SpanStyle, defaultSpecial: Color): Color {
+        if (special != null) return special
+
+        val foreground = resolveColors(defaults).first
+        return if (foreground == Color.Unspecified) defaultSpecial else foreground
+    }
+
+    private fun resolveColors(defaults: SpanStyle): Pair<Color, Color> {
+        val defaultForeground = defaults.color.orElse(Color.White)
+        val defaultBackground = defaults.background.orElse(Color.Black)
+
+        var foreground = foreground ?: defaultForeground
+        var background = background ?: defaultBackground
+        if (reverse) {
+            val swap = foreground
+            foreground = background
+            background = swap
+        }
+
+        val blendOpacity = 1f - blend.coerceIn(0, 100) / 100f
+        if (blendOpacity < 1f) {
+            foreground = foreground.copy(alpha = foreground.alpha * blendOpacity)
+            background = background.copy(alpha = background.alpha * blendOpacity)
+        }
+        if (dim) {
+            foreground = foreground.copy(alpha = foreground.alpha * DIM_OPACITY)
+        }
+
+        return foreground to background
+    }
+
+    companion object {
+        val Default = NvimHighlight()
+
+        private const val DIM_OPACITY = 0.55f
+    }
+}
+
+private fun Color.orElse(fallback: Color): Color = if (this == Color.Unspecified) fallback else this
+
 /**
  * An immutable container for render state
  */
@@ -256,8 +339,9 @@ class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd:
 class NvimFrame(
     val generation: Long = 0,
     val rows: List<TextRow> = emptyList(),
-    val styles: Map<Int, SpanStyle> = emptyMap(),
+    val styles: Map<Int, NvimHighlight> = emptyMap(),
     val defaultColors: SpanStyle = SpanStyle(color = Color.White, background = Color.Black),
+    val defaultSpecial: Color = Color.Unspecified,
     val cursor: CursorState = CursorState(),
     val modeInfo: List<ModeProperty> = emptyList(),
     val cursorStyleEnabled: Boolean = true,
@@ -267,6 +351,18 @@ class NvimFrame(
 ) {
     val cursorMode: ModeProperty?
         get() = if (cursorStyleEnabled) modeInfo.getOrNull(mode) else null
+
+    fun highlightFor(hlId: Int): NvimHighlight = if (hlId == -1) {
+        NvimHighlight.Default
+    } else {
+        styles[hlId] ?: NvimHighlight.Default
+    }
+
+    fun urlAt(rowIndex: Int, column: Int): String? {
+        val row = rows.getOrNull(rowIndex) ?: return null
+        val span = row.spanAt(column) ?: return null
+        return highlightFor(span.hlId).url
+    }
 
     override fun equals(other: Any?) = other is NvimFrame && other.generation == generation
     override fun hashCode() = generation.hashCode()
@@ -283,7 +379,8 @@ class NvimStateActor {
     private var isBusy: Boolean = true
     private var modeIndex: Long = 0
     private var defaultColors: SpanStyle = SpanStyle(color = Color.White, background = Color.Black)
-    private var styles: Map<Int, SpanStyle> = emptyMap()
+    private var defaultSpecial: Color = Color.Unspecified
+    private var styles: Map<Int, NvimHighlight> = emptyMap()
     private val rows: ArrayList<TextRow> = ArrayList()
     private var cursor: CursorState = CursorState()
 
@@ -297,6 +394,7 @@ class NvimStateActor {
             rows = rows.toList(),
             styles = styles,
             defaultColors = defaultColors,
+            defaultSpecial = defaultSpecial,
             cursor = cursor,
             modeInfo = modeInfo,
             cursorStyleEnabled = cursorStyleEnabled,
@@ -338,10 +436,14 @@ class NvimStateActor {
                     color = nvimRgbColor(event.rgb_fg),
                     background = nvimRgbColor(event.rgb_bg),
                 )
+                defaultSpecial = event.rgb_sp
+                    .takeIf { it >= 0 }
+                    ?.let(::nvimRgbColor)
+                    ?: Color.Unspecified
             }
 
             is NvimUiEvent.HlAttrDefine -> {
-                styles = styles + (event.id.toInt() to nvimAttrToStyle(event.rgb_attr))
+                styles = styles + (event.id.toInt() to nvimAttrToHighlight(event.rgb_attr))
             }
 
             is NvimUiEvent.GridResize -> {
@@ -565,21 +667,24 @@ private fun String.lastClusterStart(): Int {
 
 fun nvimRgbColor(rgb: Long): Color = Color(rgb.toInt() or 0xFF000000.toInt())
 
-fun nvimAttrToStyle(hl: HighlightAttr): SpanStyle = SpanStyle(
-    color = hl.foreground?.let { nvimRgbColor(it) }
-        ?: Color.Unspecified,
-    background = hl.background?.let { nvimRgbColor(it) }
-        ?: Color.Unspecified,
-    fontWeight = if (hl.bold) FontWeight.Bold else FontWeight.Normal,
-    fontStyle = if (hl.italic) FontStyle.Italic else FontStyle.Normal,
-    textDecoration = buildList {
-        if (hl.underline) add(TextDecoration.Underline)
-        if (hl.strikethrough) add(TextDecoration.LineThrough)
-    }.let {
-        when (it.size) {
-            0 -> TextDecoration.None
-            1 -> it.first()
-            else -> TextDecoration.combine(it)
-        }
-    },
+fun nvimAttrToHighlight(hl: HighlightAttr): NvimHighlight = NvimHighlight(
+    foreground = hl.foreground?.let { nvimRgbColor(it) },
+    background = hl.background?.let { nvimRgbColor(it) },
+    special = hl.special?.let { nvimRgbColor(it) },
+    reverse = hl.reverse,
+    italic = hl.italic,
+    bold = hl.bold,
+    strikethrough = hl.strikethrough,
+    underline = hl.underline,
+    undercurl = hl.undercurl,
+    underdouble = hl.underdouble,
+    underdotted = hl.underdotted,
+    underdashed = hl.underdashed,
+    altfont = hl.altfont,
+    dim = hl.dim,
+    blink = hl.blink,
+    conceal = hl.conceal,
+    overline = hl.overline,
+    blend = hl.blend?.toInt() ?: 0,
+    url = hl.url,
 )

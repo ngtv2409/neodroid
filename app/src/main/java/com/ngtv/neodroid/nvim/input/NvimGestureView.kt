@@ -30,6 +30,8 @@ class NvimGestureView(context: Context) : View(context) {
     var cellWidthPx: Float = 1f
     var cellHeightPx: Float = 1f
     var takeModifiers: () -> String = { "" }
+    var urlAt: (row: Int, col: Int) -> String? = { _, _ -> null }
+    var onOpenUrl: (String) -> Unit = {}
     var onMouse: (NvimMouseEvent) -> Unit = {}
 
     private val handler = Handler(Looper.getMainLooper())
@@ -70,6 +72,7 @@ class NvimGestureView(context: Context) : View(context) {
     private var mouseModifiers = ""
     private var mouseRow = 0
     private var mouseCol = 0
+    private var pressedUrl: String? = null
 
     private var hoverRow = -1
     private var hoverCol = -1
@@ -312,20 +315,26 @@ class NvimGestureView(context: Context) : View(context) {
         when (touchMode) {
             TouchMode.Pending -> {
                 val cell = cellFor(event.x, event.y)
-                send(
-                    NvimMouseButton.Left,
-                    NvimMouseAction.Press,
-                    touchModifiers,
-                    cell.first,
-                    cell.second,
-                )
-                send(
-                    NvimMouseButton.Left,
-                    NvimMouseAction.Release,
-                    touchModifiers,
-                    cell.first,
-                    cell.second,
-                )
+                val url = urlAt(cell.first, cell.second)
+                if (url != null) {
+                    performClick()
+                    onOpenUrl(url)
+                } else {
+                    send(
+                        NvimMouseButton.Left,
+                        NvimMouseAction.Press,
+                        touchModifiers,
+                        cell.first,
+                        cell.second,
+                    )
+                    send(
+                        NvimMouseButton.Left,
+                        NvimMouseAction.Release,
+                        touchModifiers,
+                        cell.first,
+                        cell.second,
+                    )
+                }
             }
 
             TouchMode.Dragging -> {
@@ -515,6 +524,13 @@ class NvimGestureView(context: Context) : View(context) {
         val cell = cellFor(event.x, event.y)
         mouseRow = cell.first
         mouseCol = cell.second
+        pressedUrl = if (button == NvimMouseButton.Left) {
+            urlAt(cell.first, cell.second)
+        } else {
+            null
+        }
+        if (pressedUrl != null) return
+
         send(button, NvimMouseAction.Press, modifiersFor(event, mouseModifiers), mouseRow, mouseCol)
     }
 
@@ -522,6 +538,19 @@ class NvimGestureView(context: Context) : View(context) {
         val button = mouseButton ?: return
         val cell = cellFor(event.x, event.y)
         if (cell.first == mouseRow && cell.second == mouseCol) return
+
+        if (pressedUrl != null) {
+            // Dragging off a link turns it into a normal mouse press followed
+            // by a drag, starting at the cell where the press happened.
+            pressedUrl = null
+            send(
+                button,
+                NvimMouseAction.Press,
+                modifiersFor(event, mouseModifiers),
+                mouseRow,
+                mouseCol,
+            )
+        }
 
         mouseRow = cell.first
         mouseCol = cell.second
@@ -533,6 +562,26 @@ class NvimGestureView(context: Context) : View(context) {
         if (button != null && button != active) return
 
         val cell = cellFor(event.x, event.y)
+        val url = pressedUrl
+        pressedUrl = null
+
+        if (url != null && cell.first == mouseRow && cell.second == mouseCol) {
+            mouseButton = null
+            mouseModifiers = ""
+            onOpenUrl(url)
+            return
+        }
+        if (url != null) {
+            // The pointer left the link without generating a move event.
+            send(
+                active,
+                NvimMouseAction.Press,
+                modifiersFor(event, mouseModifiers),
+                mouseRow,
+                mouseCol,
+            )
+        }
+
         send(
             active,
             NvimMouseAction.Release,

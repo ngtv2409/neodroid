@@ -33,10 +33,16 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextMeasurer
@@ -53,11 +59,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.ngtv.neodroid.core.events.CursorShape
 import com.ngtv.neodroid.core.events.ModeProperty
 import com.ngtv.neodroid.nvim.NvimFrame
+import com.ngtv.neodroid.nvim.NvimHighlight
 import com.ngtv.neodroid.nvim.input.NvimGestureView
 import com.ngtv.neodroid.nvim.input.NvimMouseEvent
 import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.delay
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.sin
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -67,6 +76,7 @@ fun NvimEditor(
     onResize: suspend (width: Int, height: Int) -> Unit,
     onMouse: (NvimMouseEvent) -> Unit,
     takeModifiers: () -> String,
+    onOpenUrlError: (String) -> Unit = {},
     fontFamily: FontFamily,
     fontSize: TextUnit,
     lineHeight: TextUnit,
@@ -135,6 +145,8 @@ fun NvimEditor(
                     )
                 }
             }
+            val blinkVisible = rememberTextBlinkVisible(frame)
+            val uriHandler = LocalUriHandler.current
 
             Box(
                 modifier = Modifier
@@ -145,6 +157,7 @@ fun NvimEditor(
                     rows = renderedRows,
                     cellWidth = cellWidth,
                     cellHeight = cellHeight,
+                    blinkVisible = blinkVisible,
                 )
                 NvimCursorOverlay(
                     frame = frame,
@@ -158,6 +171,12 @@ fun NvimEditor(
                     cellHeightPx = with(density) { cellHeight.toPx() },
                     columns = columns,
                     rows = visibleRows,
+                    urlAt = frame::urlAt,
+                    onOpenUrl = { url ->
+                        runCatching { uriHandler.openUri(url) }.onFailure {
+                            onOpenUrlError("Could not open link: $url")
+                        }
+                    },
                     onMouse = onMouse,
                     takeModifiers = takeModifiers,
                     modifier = Modifier.fillMaxSize(),
@@ -168,7 +187,12 @@ fun NvimEditor(
 }
 
 @Composable
-private fun NvimGrid(rows: List<RenderedRow>, cellWidth: Dp, cellHeight: Dp) {
+private fun NvimGrid(
+    rows: List<RenderedRow>,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    blinkVisible: Boolean,
+) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val width = cellWidth.toPx()
         val height = cellHeight.toPx()
@@ -203,7 +227,23 @@ private fun NvimGrid(rows: List<RenderedRow>, cellWidth: Dp, cellHeight: Dp) {
                     rowIndex = rowIndex,
                     cellWidth = cellWidth,
                     cellHeight = cellHeight,
+                    blinkVisible = blinkVisible,
                 )
+            }
+        }
+    }
+
+    if (rows.any { it.decorations.isNotEmpty() }) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = cellWidth.toPx()
+            val height = cellHeight.toPx()
+
+            NvimPerf.measure("render.draw.decorations") {
+                rows.forEachIndexed { rowIndex, row ->
+                    row.decorations.forEach { decoration ->
+                        drawDecoration(decoration, rowIndex, width, height)
+                    }
+                }
             }
         }
     }
@@ -215,8 +255,10 @@ private fun NvimTextSegment(
     rowIndex: Int,
     cellWidth: Dp,
     cellHeight: Dp,
+    blinkVisible: Boolean,
 ) {
     val targetWidth = cellWidth * segment.columns.toFloat()
+    val segmentVisible = blinkVisible || !segment.blink
 
     Box(
         modifier = Modifier.offset(
@@ -228,7 +270,8 @@ private fun NvimTextSegment(
             modifier = Modifier
                 .width(targetWidth)
                 .height(cellHeight)
-                .graphicsLayer(),
+                .graphicsLayer()
+                .alpha(if (segmentVisible) 1f else 0f),
         ) {
             NvimPerf.measure(segment.kind.drawMetric) {
                 val targetPx = targetWidth.toPx()
@@ -260,6 +303,116 @@ private fun NvimTextSegment(
             }
         }
     }
+}
+
+private fun DrawScope.drawDecoration(
+    decoration: RenderedDecoration,
+    rowIndex: Int,
+    cellWidth: Float,
+    cellHeight: Float,
+) {
+    val x = decoration.startCol * cellWidth
+    val width = decoration.columns * cellWidth
+    val top = rowIndex * cellHeight
+    val strokeWidth = (cellHeight * 0.06f).coerceAtLeast(1f)
+    val startX = x + strokeWidth / 2f
+    val endX = x + width - strokeWidth / 2f
+    if (startX >= endX) return
+
+    val bottom = top + cellHeight - strokeWidth
+    val color = decoration.color
+
+    when (decoration.kind) {
+        DecorationKind.Underline -> drawLine(
+            color = color,
+            start = Offset(startX, bottom),
+            end = Offset(endX, bottom),
+            strokeWidth = strokeWidth,
+        )
+
+        DecorationKind.UnderDouble -> {
+            drawLine(
+                color = color,
+                start = Offset(startX, bottom - strokeWidth * 2f),
+                end = Offset(endX, bottom - strokeWidth * 2f),
+                strokeWidth = strokeWidth,
+            )
+            drawLine(
+                color = color,
+                start = Offset(startX, bottom),
+                end = Offset(endX, bottom),
+                strokeWidth = strokeWidth,
+            )
+        }
+
+        DecorationKind.UnderCurly -> {
+            val amplitude = (cellHeight * 0.08f).coerceAtLeast(1f)
+            val wavelength = (cellWidth * 2f).coerceAtLeast(2f)
+            val path = Path()
+            path.moveTo(startX, bottom)
+            val step = (wavelength / 8f).coerceAtLeast(1f)
+            var px = startX
+            while (px <= endX) {
+                val phase = ((px - startX) / wavelength) * 2f * PI.toFloat()
+                path.lineTo(px, bottom + sin(phase) * amplitude)
+                px += step
+            }
+            path.lineTo(endX, bottom)
+            drawPath(
+                path = path,
+                color = color,
+                style = Stroke(width = strokeWidth),
+            )
+        }
+
+        DecorationKind.UnderDotted -> drawLine(
+            color = color,
+            start = Offset(startX, bottom),
+            end = Offset(endX, bottom),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+            pathEffect = PathEffect.dashPathEffect(
+                floatArrayOf(strokeWidth, strokeWidth * 2f),
+            ),
+        )
+
+        DecorationKind.UnderDashed -> drawLine(
+            color = color,
+            start = Offset(startX, bottom),
+            end = Offset(endX, bottom),
+            strokeWidth = strokeWidth,
+            pathEffect = PathEffect.dashPathEffect(
+                floatArrayOf(strokeWidth * 3f, strokeWidth * 2f),
+            ),
+        )
+
+        DecorationKind.Overline -> drawLine(
+            color = color,
+            start = Offset(startX, top + strokeWidth),
+            end = Offset(endX, top + strokeWidth),
+            strokeWidth = strokeWidth,
+        )
+    }
+}
+
+@Composable
+private fun rememberTextBlinkVisible(frame: NvimFrame): Boolean {
+    val hasBlink = remember(frame.styles) {
+        frame.styles.values.any { it.blink }
+    }
+    var visible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(hasBlink) {
+        visible = true
+        if (!hasBlink) return@LaunchedEffect
+
+        while (true) {
+            delay(TEXT_BLINK_INTERVAL_MS)
+            visible = !visible
+        }
+    }
+
+    return visible
 }
 
 private data class CursorVisual(
@@ -395,14 +548,13 @@ private fun NvimFrame.cursorVisual(): CursorVisual {
     val cursor = cursor
     val row = rows.getOrNull(cursor.row)
     val span = row?.spans?.firstOrNull { cursor.col in it.startCol until it.endCol }
-    val cellStyle = when {
-        span == null || span.hlId == -1 -> defaultColors
-        else -> styles[span.hlId] ?: defaultColors
-    }
+    val cellHighlight = span?.let { highlightFor(it.hlId) } ?: NvimHighlight.Default
+    val cellStyle = cellHighlight.spanStyle(defaultColors)
+    val modeHighlight = mode?.attr_id?.takeIf { it != 0L }?.let { highlightFor(it.toInt()) }
+    val attrStyle = modeHighlight?.spanStyle(defaultColors)
 
     val cellForeground = cellStyle.color.orElse(defaultColors.color)
     val cellBackground = cellStyle.background.orElse(defaultColors.background)
-    val attrStyle = mode?.attr_id?.takeIf { it != 0L }?.let { styles[it.toInt()] }
     val attrForeground = attrStyle?.color?.takeUnless { it == Color.Unspecified }
     val attrBackground = attrStyle?.background?.takeUnless { it == Color.Unspecified }
 
@@ -414,7 +566,7 @@ private fun NvimFrame.cursorVisual(): CursorVisual {
     }
 
     val cellColumns = if (span?.wide == true) span.columns else 1
-    val glyph = if (shape == CursorShape.BLOCK && span != null) {
+    val glyph = if (shape == CursorShape.BLOCK && span != null && !cellHighlight.conceal) {
         val offset = cursor.col - span.startCol
         span.cellTextAt(offset)?.takeUnless { it == " " }
     } else {
@@ -444,10 +596,14 @@ private fun NvimGestureOverlay(
     cellHeightPx: Float,
     columns: Int,
     rows: Int,
+    urlAt: (row: Int, col: Int) -> String?,
+    onOpenUrl: (String) -> Unit,
     onMouse: (NvimMouseEvent) -> Unit,
     takeModifiers: () -> String,
     modifier: Modifier = Modifier,
 ) {
+    val currentUrlAt by rememberUpdatedState(urlAt)
+    val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
     val currentOnMouse by rememberUpdatedState(onMouse)
     val currentTakeModifiers by rememberUpdatedState(takeModifiers)
 
@@ -458,6 +614,8 @@ private fun NvimGestureOverlay(
             view.rows = rows
             view.cellWidthPx = cellWidthPx.coerceAtLeast(1f)
             view.cellHeightPx = cellHeightPx.coerceAtLeast(1f)
+            view.urlAt = currentUrlAt
+            view.onOpenUrl = currentOnOpenUrl
             view.onMouse = currentOnMouse
             view.takeModifiers = currentTakeModifiers
         },
@@ -607,6 +765,7 @@ internal class NvimInputView(context: Context) : View(context) {
 }
 
 private val RESIZE_DEBOUNCE_MS: Duration = 100.milliseconds
+private val TEXT_BLINK_INTERVAL_MS: Duration = 500.milliseconds
 
 // nvim key notations
 private fun CharSequence.toNvimKeys(ctrl: Boolean = false, alt: Boolean = false): String =

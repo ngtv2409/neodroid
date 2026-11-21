@@ -8,6 +8,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import com.ngtv.neodroid.nvim.NvimFrame
+import com.ngtv.neodroid.nvim.NvimHighlight
 import com.ngtv.neodroid.nvim.TextRow
 import com.ngtv.neodroid.nvim.TextSpan
 import com.ngtv.neodroid.perf.NvimPerf
@@ -62,13 +63,32 @@ internal class RenderedSegment(
     val columns: Int,
     val kind: SegmentKind,
     val wide: Boolean,
+    val blink: Boolean,
     val layout: TextLayoutResult,
+)
+
+internal enum class DecorationKind {
+    Underline,
+    UnderDouble,
+    UnderCurly,
+    UnderDotted,
+    UnderDashed,
+    Overline,
+}
+
+@Immutable
+internal class RenderedDecoration(
+    val startCol: Int,
+    val columns: Int,
+    val kind: DecorationKind,
+    val color: Color,
 )
 
 @Immutable
 internal class RenderedRow(
     val segments: List<RenderedSegment>,
     val backgrounds: List<RenderedBackground>,
+    val decorations: List<RenderedDecoration>,
 )
 
 /**
@@ -84,8 +104,10 @@ internal class NvimRenderCache {
         maxEntries = MAX_GUTTER_SEGMENTS,
         initialCapacity = INITIAL_GUTTER_SEGMENTS,
     )
-    private var cachedStyles: Map<Int, SpanStyle>? = null
+    private var cachedStyles: Map<Int, NvimHighlight>? = null
     private var cachedDefaultColors: SpanStyle? = null
+    private var cachedDefaultSpecial: Color? = null
+    private var resolvedStyles: Map<Int, SpanStyle>? = null
 
     fun render(
         frame: NvimFrame,
@@ -93,12 +115,20 @@ internal class NvimRenderCache {
         textMeasurer: TextMeasurer,
         baseStyle: TextStyle,
     ): List<RenderedRow> {
-        if (cachedStyles != frame.styles || cachedDefaultColors != frame.defaultColors) {
+        if (
+            cachedStyles != frame.styles ||
+            cachedDefaultColors != frame.defaultColors ||
+            cachedDefaultSpecial != frame.defaultSpecial
+        ) {
             rows.clear()
             contentSegments.clear()
             gutterSegments.clear()
             cachedStyles = frame.styles
             cachedDefaultColors = frame.defaultColors
+            cachedDefaultSpecial = frame.defaultSpecial
+            resolvedStyles = frame.styles.mapValues { (_, highlight) ->
+                highlight.spanStyle(frame.defaultColors)
+            }
         }
 
         val count = minOf(frame.rows.size, maxRows.coerceAtLeast(0))
@@ -132,10 +162,11 @@ internal class NvimRenderCache {
         baseStyle: TextStyle,
     ): RenderedRow {
         val backgrounds = buildBackgrounds(row, frame)
+        val decorations = buildDecorations(row, frame)
         val gutterEnd = gutterEndCol(row)
         val segments = ArrayList<RenderedSegment>(4)
 
-        for (range in segmentRanges(row, gutterEnd)) {
+        for (range in segmentRanges(row, gutterEnd, frame)) {
             val kind = if (range.last < gutterEnd) {
                 SegmentKind.Gutter
             } else {
@@ -157,6 +188,7 @@ internal class NvimRenderCache {
         return RenderedRow(
             segments = segments,
             backgrounds = backgrounds,
+            decorations = decorations,
         )
     }
 
@@ -165,13 +197,75 @@ internal class NvimRenderCache {
         val defaultBackground = frame.defaultColors.background
 
         row.spans.forEach { span ->
-            val background = styleFor(span.hlId, frame).background
+            val background = highlightFor(span.hlId, frame)
+                .resolvedBackground(frame.defaultColors)
             addBackground(
                 target = result,
                 startCol = span.startCol,
                 columns = span.columns,
                 color = background,
                 defaultBackground = defaultBackground,
+            )
+        }
+
+        return result
+    }
+
+    private fun buildDecorations(row: TextRow, frame: NvimFrame): List<RenderedDecoration> {
+        val result = ArrayList<RenderedDecoration>()
+
+        row.spans.forEach { span ->
+            val highlight = highlightFor(span.hlId, frame)
+            if (!highlight.hasCustomDecoration) return@forEach
+
+            val color = highlight.resolvedSpecial(frame.defaultColors, frame.defaultSpecial)
+            addDecoration(
+                target = result,
+                startCol = span.startCol,
+                columns = span.columns,
+                kind = DecorationKind.Underline,
+                color = color,
+                enabled = highlight.underline,
+            )
+            addDecoration(
+                target = result,
+                startCol = span.startCol,
+                columns = span.columns,
+                kind = DecorationKind.UnderCurly,
+                color = color,
+                enabled = highlight.undercurl,
+            )
+            addDecoration(
+                target = result,
+                startCol = span.startCol,
+                columns = span.columns,
+                kind = DecorationKind.UnderDouble,
+                color = color,
+                enabled = highlight.underdouble,
+            )
+            addDecoration(
+                target = result,
+                startCol = span.startCol,
+                columns = span.columns,
+                kind = DecorationKind.UnderDotted,
+                color = color,
+                enabled = highlight.underdotted,
+            )
+            addDecoration(
+                target = result,
+                startCol = span.startCol,
+                columns = span.columns,
+                kind = DecorationKind.UnderDashed,
+                color = color,
+                enabled = highlight.underdashed,
+            )
+            addDecoration(
+                target = result,
+                startCol = span.startCol,
+                columns = span.columns,
+                kind = DecorationKind.Overline,
+                color = color,
+                enabled = highlight.overline,
             )
         }
 
@@ -185,7 +279,7 @@ internal class NvimRenderCache {
      * dirty cuts keep unchanged text outside a patch reusable even when
      * normalized spans merge back into one highlighted run.
      */
-    private fun segmentRanges(row: TextRow, gutterEnd: Int): List<IntRange> {
+    private fun segmentRanges(row: TextRow, gutterEnd: Int, frame: NvimFrame): List<IntRange> {
         val width = row.columns
         if (width <= 0) return emptyList()
 
@@ -198,6 +292,13 @@ internal class NvimRenderCache {
         if (row.dirtyStart >= 0 && dirtyEnd > dirtyStart) {
             cuts.add(dirtyStart)
             cuts.add(dirtyEnd)
+        }
+
+        row.spans.forEach { span ->
+            if (highlightFor(span.hlId, frame).blink) {
+                cuts.add(span.startCol)
+                cuts.add(span.endCol)
+            }
         }
 
         val wideSpans = row.spans.filter { it.wide }
@@ -247,6 +348,7 @@ internal class NvimRenderCache {
             columns = endCol - startCol,
             kind = kind,
             wide = spans.any { it.wide },
+            blink = spans.any { highlightFor(it.hlId, frame).blink },
             layout = NvimPerf.measure(kind.measureMetric) {
                 measureSegment(spans, frame, textMeasurer, baseStyle)
             },
@@ -283,9 +385,14 @@ internal class NvimRenderCache {
         val text = AnnotatedString.Builder()
 
         spans.forEach { span ->
+            val highlight = highlightFor(span.hlId, frame)
             val style = styleFor(span.hlId, frame)
             val start = text.length
-            text.append(span.text)
+            if (highlight.conceal) {
+                text.append(" ".repeat(span.columns))
+            } else {
+                text.append(span.text)
+            }
             if (text.length > start) {
                 text.addStyle(
                     style.copy(background = Color.Unspecified),
@@ -303,10 +410,40 @@ internal class NvimRenderCache {
         )
     }
 
+    private fun highlightFor(hlId: Int, frame: NvimFrame): NvimHighlight = frame.highlightFor(hlId)
+
     private fun styleFor(hlId: Int, frame: NvimFrame): SpanStyle = if (hlId == -1) {
         frame.defaultColors
     } else {
-        frame.styles[hlId] ?: frame.defaultColors
+        resolvedStyles?.get(hlId) ?: frame.defaultColors
+    }
+
+    private fun addDecoration(
+        target: MutableList<RenderedDecoration>,
+        startCol: Int,
+        columns: Int,
+        kind: DecorationKind,
+        color: Color,
+        enabled: Boolean,
+    ) {
+        if (!enabled || columns <= 0 || color == Color.Unspecified) return
+
+        val previous = target.lastOrNull()
+        if (
+            previous != null &&
+            previous.kind == kind &&
+            previous.color == color &&
+            previous.startCol + previous.columns == startCol
+        ) {
+            target[target.lastIndex] = RenderedDecoration(
+                startCol = previous.startCol,
+                columns = previous.columns + columns,
+                kind = kind,
+                color = color,
+            )
+        } else {
+            target.add(RenderedDecoration(startCol, columns, kind, color))
+        }
     }
 
     private fun addBackground(
