@@ -32,6 +32,8 @@ import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.SSHHostEntity
 import com.ngtv.neodroid.database.SSHHostViewModel
+import com.ngtv.neodroid.settings.Settings
+import com.ngtv.neodroid.settings.rememberSettingsRepository
 import com.ngtv.neodroid.sshUtils.SshConnection
 import com.ngtv.neodroid.sshUtils.SshSessionManager
 import com.ngtv.neodroid.ui.components.ActionMenuItem
@@ -91,6 +93,14 @@ fun HomeScreen(
     val recentHosts by viewModel.recentHosts.collectAsStateWithLifecycle()
     val connections by sessionManager.connections.collectAsStateWithLifecycle()
 
+    val settings = rememberSettingsRepository()
+    val showOnline by settings.getAsFlow(Settings.showHomeOnline)
+        .collectAsStateWithLifecycle(initialValue = Settings.showHomeOnline.defaultValue)
+    val showRecent by settings.getAsFlow(Settings.showHomeRecent)
+        .collectAsStateWithLifecycle(initialValue = Settings.showHomeRecent.defaultValue)
+    val showHosts by settings.getAsFlow(Settings.showHomeHosts)
+        .collectAsStateWithLifecycle(initialValue = Settings.showHomeHosts.defaultValue)
+
     val onlineConnections = connections.filter { it.isHealthy }
     val recent = recentHosts.filter { it.last_connected_at != null }.take(MAX_HOME_RECENT_HOSTS)
 
@@ -128,6 +138,9 @@ fun HomeScreen(
                 onOpenConnection = onOpenConnection,
                 onShowAllConnections = onShowAllConnections,
                 onDeleteHost = deleteHost,
+                showOnline = showOnline,
+                showRecent = showRecent,
+                showHosts = showHosts,
                 selectedHostId = selectedHostId,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -199,6 +212,9 @@ fun HomeScreen(
                     onOpenConnection = onOpenConnection,
                     onShowAllConnections = onShowAllConnections,
                     onDeleteHost = deleteHost,
+                    showOnline = showOnline,
+                    showRecent = showRecent,
+                    showHosts = showHosts,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
@@ -233,95 +249,119 @@ private fun HomeContent(
     onShowAllConnections: () -> Unit,
     onDeleteHost: (SSHHostEntity) -> Unit,
     modifier: Modifier = Modifier,
+    showOnline: Boolean = true,
+    showRecent: Boolean = true,
+    showHosts: Boolean = true,
     selectedHostId: Int? = null,
 ) {
     LazyColumn(modifier = modifier) {
-        item(key = "online-header") {
-            ListSectionHeader(
-                title = "Online",
-                count = onlineConnections.size,
-                actionLabel = if (onlineConnections.isNotEmpty()) {
-                    "Show all"
-                } else {
-                    null
-                },
-                onAction = onShowAllConnections,
-            )
+        if (!showOnline && !showRecent && !showHosts) {
+            item(key = "home-sections-hidden") {
+                HintText(
+                    "All home sections are hidden. " +
+                        "Enable them in Settings > Home screen.",
+                )
+            }
         }
 
-        if (onlineConnections.isEmpty()) {
-            item(key = "online-empty") {
-                HintText("No active connections. Connect to a host below.")
-            }
-        } else {
-            val visibleConnections = onlineConnections.take(MAX_HOME_CONNECTIONS)
-            itemsIndexed(
-                items = visibleConnections,
-                key = { _, connection -> "online-${connection.id}" },
-            ) { index, connection ->
-                OnlineConnectionRow(
-                    connection = connection,
-                    onClick = { onOpenConnection(connection.id) },
+        if (showOnline) {
+            item(key = "online-header") {
+                ListSectionHeader(
+                    title = "Online",
+                    count = onlineConnections.size,
+                    actionLabel = if (onlineConnections.isNotEmpty()) {
+                        "Show all"
+                    } else {
+                        null
+                    },
+                    onAction = onShowAllConnections,
                 )
-                if (index < visibleConnections.lastIndex) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = Spacing.md))
+            }
+
+            if (onlineConnections.isEmpty()) {
+                item(key = "online-empty") {
+                    HintText("No active connections. Connect to a host below.")
+                }
+            } else {
+                val visibleConnections = onlineConnections.take(MAX_HOME_CONNECTIONS)
+                itemsIndexed(
+                    items = visibleConnections,
+                    key = { _, connection -> "online-${connection.id}" },
+                ) { index, connection ->
+                    OnlineConnectionRow(
+                        connection = connection,
+                        onClick = { onOpenConnection(connection.id) },
+                    )
+                    if (index < visibleConnections.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = Spacing.md),
+                        )
+                    }
                 }
             }
         }
 
-        item(key = "recent-header") {
-            ListSectionHeader(
-                title = "Recent",
-                count = recentHosts.size,
-            )
-        }
-
-        if (recentHosts.isEmpty()) {
-            item(key = "recent-empty") {
-                HintText("Hosts you connect to will appear here.")
-            }
-        } else {
-            itemsIndexed(
-                items = recentHosts,
-                key = { _, host -> "recent-${host.id}" },
-            ) { index, host ->
-                RecentHostRow(
-                    host = host,
-                    onClick = { onConnectHost(host.id) },
-                    onDelete = { onDeleteHost(host) },
+        if (showRecent) {
+            item(key = "recent-header") {
+                ListSectionHeader(
+                    title = "Recent",
+                    count = recentHosts.size,
                 )
-                if (index < recentHosts.lastIndex) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = Spacing.md))
+            }
+
+            if (recentHosts.isEmpty()) {
+                item(key = "recent-empty") {
+                    HintText("Hosts you connect to will appear here.")
+                }
+            } else {
+                itemsIndexed(
+                    items = recentHosts,
+                    key = { _, host -> "recent-${host.id}" },
+                ) { index, host ->
+                    RecentHostRow(
+                        host = host,
+                        onClick = { onConnectHost(host.id) },
+                        onDelete = { onDeleteHost(host) },
+                    )
+                    if (index < recentHosts.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = Spacing.md),
+                        )
+                    }
                 }
             }
         }
 
-        item(key = "hosts-header") {
-            ListSectionHeader(
-                title = "Hosts",
-                count = hosts.size,
-                actionLabel = "+ Add",
-                onAction = onOpenHostAdd,
-            )
-        }
-
-        if (hosts.isEmpty()) {
-            item(key = "hosts-empty") {
-                HintText("No saved hosts yet. Add one to get started.")
-            }
-        } else {
-            itemsIndexed(
-                items = hosts,
-                key = { _, host -> "host-${host.id}" },
-            ) { index, host ->
-                HostRow(
-                    host = host,
-                    selected = host.id == selectedHostId,
-                    onClick = { onHostClick(host.id) },
-                    onDelete = { onDeleteHost(host) },
+        if (showHosts) {
+            item(key = "hosts-header") {
+                ListSectionHeader(
+                    title = "Hosts",
+                    count = hosts.size,
+                    actionLabel = "+ Add",
+                    onAction = onOpenHostAdd,
                 )
-                if (index < hosts.lastIndex) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = Spacing.md))
+            }
+
+            if (hosts.isEmpty()) {
+                item(key = "hosts-empty") {
+                    HintText("No saved hosts yet. Add one to get started.")
+                }
+            } else {
+                itemsIndexed(
+                    items = hosts,
+                    key = { _, host -> "host-${host.id}" },
+                ) { index, host ->
+                    HostRow(
+                        host = host,
+                        selected = host.id == selectedHostId,
+                        onClick = { onHostClick(host.id) },
+                        onDelete = { onDeleteHost(host) },
+                    )
+                    if (index < hosts.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = Spacing.md),
+                        )
+                    }
                 }
             }
         }

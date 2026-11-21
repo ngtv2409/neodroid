@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -38,6 +39,9 @@ import com.ngtv.neodroid.nvim.input.rememberExtraKeysState
 import com.ngtv.neodroid.nvim.render.NvimEditor
 import com.ngtv.neodroid.nvim.render.NvimInputCapture
 import com.ngtv.neodroid.nvim.render.NvimInputView
+import com.ngtv.neodroid.settings.EditorFont
+import com.ngtv.neodroid.settings.Settings
+import com.ngtv.neodroid.settings.rememberSettingsRepository
 import com.ngtv.neodroid.sshUtils.NvimTool
 import com.ngtv.neodroid.sshUtils.WorkspaceSession
 import com.ngtv.neodroid.sshUtils.WorkspaceTool
@@ -62,6 +66,25 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     val pagerState = rememberPagerState(initialPage = initialIndex) { session.tools.size }
     val currentTool = session.tools.getOrNull(selectedIndex)
     val extraKeysState = rememberExtraKeysState()
+
+    val settings = rememberSettingsRepository()
+    val editorFontKey by settings.getAsFlow(Settings.editorFontFamily)
+        .collectAsStateWithLifecycle(
+            initialValue = Settings.editorFontFamily.defaultValue,
+        )
+    val editorFontSize by settings.getAsFlow(Settings.editorFontSize)
+        .collectAsStateWithLifecycle(
+            initialValue = Settings.editorFontSize.defaultValue,
+        )
+    val editorLineHeight by settings.getAsFlow(Settings.editorLineHeight)
+        .collectAsStateWithLifecycle(
+            initialValue = Settings.editorLineHeight.defaultValue,
+        )
+    val editorFontFamily = remember(editorFontKey) {
+        EditorFont.fromKey(editorFontKey).fontFamily()
+    }
+    val editorFontSizeSp = editorFontSize.sp
+    val editorLineHeightSp = (editorFontSize * editorLineHeight / 100f).sp
 
     val context = LocalContext.current
     val inputView = remember(context) { NvimInputView(context) }
@@ -241,6 +264,9 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
                                     takeModifiers = {
                                         extraKeysState.takeModifierString()
                                     },
+                                    fontFamily = editorFontFamily,
+                                    fontSize = editorFontSizeSp,
+                                    lineHeight = editorLineHeightSp,
                                 )
                             }
                         }

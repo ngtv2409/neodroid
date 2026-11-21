@@ -45,10 +45,10 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.ngtv.neodroid.R
 import com.ngtv.neodroid.core.events.CursorShape
 import com.ngtv.neodroid.core.events.ModeProperty
 import com.ngtv.neodroid.nvim.NvimFrame
@@ -66,17 +66,19 @@ fun NvimEditor(
     onResize: suspend (width: Int, height: Int) -> Unit,
     onMouse: (NvimMouseEvent) -> Unit,
     takeModifiers: () -> String,
+    fontFamily: FontFamily,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
     modifier: Modifier = Modifier,
 ) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
-    val baseTextStyle = remember {
+    val baseTextStyle = remember(fontFamily, fontSize, lineHeight) {
         TextStyle(
-            // TODO: proper font management
-            fontFamily = FontFamily(Font(R.font.jetbrains_mono_nerdfont_bold)),
-            fontSize = 14.sp,
-            lineHeight = 18.sp,
+            fontFamily = fontFamily,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
         )
     }
 

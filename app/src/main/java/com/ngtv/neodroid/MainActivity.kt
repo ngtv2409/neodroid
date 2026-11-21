@@ -94,12 +94,17 @@ class MainActivity : ComponentActivity() {
             val settings = rememberSettingsRepository()
             val themeMode by settings.getAsFlow(Settings.themeMode)
                 .collectAsStateWithLifecycle(initialValue = Settings.themeMode.defaultValue)
+            val dynamicColor by settings.getAsFlow(Settings.dynamicColor)
+                .collectAsStateWithLifecycle(initialValue = Settings.dynamicColor.defaultValue)
             val isDarkMode = if (themeMode == "system") {
                 isSystemInDarkTheme()
             } else {
                 themeMode == "dark"
             }
-            NeodroidTheme(isDarkMode) {
+            NeodroidTheme(
+                darkTheme = isDarkMode,
+                dynamicColor = dynamicColor,
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,

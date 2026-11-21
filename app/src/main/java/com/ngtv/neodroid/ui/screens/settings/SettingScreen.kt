@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,15 +46,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.R
+import com.ngtv.neodroid.settings.ActionSetting
+import com.ngtv.neodroid.settings.NoteSetting
 import com.ngtv.neodroid.settings.Setting
+import com.ngtv.neodroid.settings.SettingsAction
 import com.ngtv.neodroid.settings.SettingsCatalog
 import com.ngtv.neodroid.settings.SettingsCategory
+import com.ngtv.neodroid.settings.SettingsEntry
 import com.ngtv.neodroid.settings.SettingsRepository
 import com.ngtv.neodroid.settings.rememberSettingsRepository
 import com.ngtv.neodroid.ui.components.CompactListItem
@@ -251,11 +259,11 @@ private fun SettingsCategoryContent(
             }
 
             items(
-                items = section.settings,
-                key = { setting -> "${category.id}:${setting.key.name}" },
-            ) { setting ->
-                SettingItem(
-                    setting = setting,
+                items = section.entries,
+                key = { entry -> settingsEntryKey(category.id, entry) },
+            ) { entry ->
+                SettingsEntryRow(
+                    entry = entry,
                     repository = repository,
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = Spacing.lg))
@@ -264,14 +272,148 @@ private fun SettingsCategoryContent(
     }
 }
 
+private fun settingsEntryKey(categoryId: String, entry: SettingsEntry): String = when (entry) {
+    is Setting<*> -> "$categoryId:${entry.key.name}"
+    is ActionSetting -> "$categoryId:${entry.id}"
+    is NoteSetting -> "$categoryId:${entry.id}"
+}
+
 @Composable
-private fun SettingItem(setting: Setting<*>, repository: SettingsRepository) {
-    when (setting) {
-        is Setting.Toggle -> ToggleSettingRow(setting, repository)
-        is Setting.Choice -> ChoiceSettingRow(setting, repository)
-        is Setting.Text -> TextSettingRow(setting, repository)
-        is Setting.Number -> NumberSettingRow(setting, repository)
+private fun SettingsEntryRow(entry: SettingsEntry, repository: SettingsRepository) {
+    when (entry) {
+        is Setting.Toggle -> ToggleSettingRow(entry, repository)
+        is Setting.Choice -> ChoiceSettingRow(entry, repository)
+        is Setting.Text -> TextSettingRow(entry, repository)
+        is Setting.Number -> NumberSettingRow(entry, repository)
+        is ActionSetting -> ActionSettingRow(entry, repository)
+        is NoteSetting -> NoteSettingRow(entry)
     }
+}
+
+@Composable
+private fun ActionSettingRow(setting: ActionSetting, repository: SettingsRepository) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
+    var shownText by remember { mutableStateOf<SettingsAction.ShowText?>(null) }
+    var showResetConfirmation by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button) {
+                when (val action = setting.action) {
+                    is SettingsAction.OpenUrl -> {
+                        runCatching { uriHandler.openUri(action.url) }
+                    }
+
+                    is SettingsAction.ShowText -> shownText = action
+
+                    SettingsAction.ResetSettings -> showResetConfirmation = true
+                }
+            }
+            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        SettingLabel(
+            title = setting.title,
+            description = setting.description,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            painter = painterResource(R.drawable.ic_chevron_right),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    shownText?.let { text ->
+        TextAssetDialog(
+            context = context,
+            title = text.title,
+            assetPath = text.assetPath,
+            onDismiss = { shownText = null },
+        )
+    }
+
+    if (showResetConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirmation = false },
+            title = { Text("Reset all settings?") },
+            text = {
+                Text(
+                    "Every app setting will return to its default value. " +
+                        "Hosts, authentication keys, and host keys are not affected.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetConfirmation = false
+                        scope.launch {
+                            repository.reset()
+                        }
+                    },
+                ) {
+                    Text("Reset")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun NoteSettingRow(setting: NoteSetting) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+    ) {
+        SettingLabel(
+            title = setting.title,
+            description = setting.description,
+        )
+    }
+}
+
+@Composable
+private fun TextAssetDialog(
+    context: android.content.Context,
+    title: String,
+    assetPath: String,
+    onDismiss: () -> Unit,
+) {
+    val text = remember(context, assetPath) {
+        runCatching {
+            context.assets
+                .open(assetPath)
+                .bufferedReader()
+                .use { reader -> reader.readText() }
+        }.getOrDefault("Text is unavailable.")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Text(
+                text = text,
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        },
+    )
 }
 
 @Composable
@@ -532,14 +674,23 @@ private fun NumberInputDialog(
 
 @Composable
 private fun SettingLabel(setting: Setting<*>, modifier: Modifier = Modifier) {
+    SettingLabel(
+        title = setting.title,
+        description = setting.description,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun SettingLabel(title: String, description: String?, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Text(
-            text = setting.title,
+            text = title,
             style = MaterialTheme.typography.bodyLarge,
         )
-        setting.description?.let { description ->
+        description?.let { descriptionText ->
             Text(
-                text = description,
+                text = descriptionText,
                 modifier = Modifier.padding(top = Spacing.xxs),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
