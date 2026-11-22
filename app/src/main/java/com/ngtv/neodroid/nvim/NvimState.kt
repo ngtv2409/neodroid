@@ -348,6 +348,10 @@ class NvimFrame(
     val mode: Int = 0,
     val options: Map<String, Any?> = emptyMap(),
     val isBusy: Boolean = true,
+    val title: String? = null,
+    val icon: String? = null,
+    val cwd: String? = null,
+    val hlGroups: Map<String, Int> = emptyMap(),
 ) {
     val cursorMode: ModeProperty?
         get() = if (cursorStyleEnabled) modeInfo.getOrNull(mode) else null
@@ -357,6 +361,8 @@ class NvimFrame(
     } else {
         styles[hlId] ?: NvimHighlight.Default
     }
+
+    fun highlightForGroup(name: String): NvimHighlight? = hlGroups[name]?.let(::highlightFor)
 
     fun urlAt(rowIndex: Int, column: Int): String? {
         val row = rows.getOrNull(rowIndex) ?: return null
@@ -381,6 +387,11 @@ class NvimStateActor {
     private var defaultColors: SpanStyle = SpanStyle(color = Color.White, background = Color.Black)
     private var defaultSpecial: Color = Color.Unspecified
     private var styles: Map<Int, NvimHighlight> = emptyMap()
+    private var title: String? = null
+    private var icon: String? = null
+    private var cwd: String? = null
+    private var hlGroups: Map<String, Int> = emptyMap()
+    private var activeGrid: Long? = null
     private val rows: ArrayList<TextRow> = ArrayList()
     private var cursor: CursorState = CursorState()
 
@@ -401,11 +412,31 @@ class NvimStateActor {
             mode = modeIndex.toInt(),
             options = options,
             isBusy = isBusy,
+            title = title,
+            icon = icon,
+            cwd = cwd,
+            hlGroups = hlGroups,
         )
     }
 
     fun apply(event: NvimUiEvent) {
         when (event) {
+            is NvimUiEvent.SetTitle -> {
+                title = event.title
+            }
+
+            is NvimUiEvent.SetIcon -> {
+                icon = event.icon
+            }
+
+            is NvimUiEvent.Chdir -> {
+                cwd = event.path
+            }
+
+            is NvimUiEvent.HlGroupSet -> {
+                hlGroups = hlGroups + (event.name to event.id.toInt())
+            }
+
             is NvimUiEvent.OptionSet -> {
                 options = options + (event.name to event.value)
             }
@@ -447,6 +478,7 @@ class NvimStateActor {
             }
 
             is NvimUiEvent.GridResize -> {
+                activeGrid = event.grid
                 rows.clear()
                 repeat(event.height.toInt().coerceAtLeast(0)) {
                     rows.add(TextRow.blank(event.width.toInt()))
@@ -457,6 +489,14 @@ class NvimStateActor {
 
             is NvimUiEvent.GridClear -> {
                 for (i in rows.indices) rows[i] = rows[i].cleared()
+            }
+
+            is NvimUiEvent.GridDestroy -> {
+                if (activeGrid == null || event.grid == activeGrid) {
+                    rows.clear()
+                    cursor = CursorState()
+                    activeGrid = null
+                }
             }
 
             is NvimUiEvent.GridCursorGoto -> {

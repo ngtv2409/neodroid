@@ -3,6 +3,7 @@ package com.ngtv.neodroid.ui.screens.workspace
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -19,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,12 +33,14 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ngtv.neodroid.R
 import com.ngtv.neodroid.nvim.input.DefaultExtraKeys
 import com.ngtv.neodroid.nvim.input.ExtraKeyAction
 import com.ngtv.neodroid.nvim.input.ExtraKeysBar
 import com.ngtv.neodroid.nvim.input.ExtraKeysState
 import com.ngtv.neodroid.nvim.input.rememberExtraKeysState
+import com.ngtv.neodroid.sshUtils.NvimTool
 import com.ngtv.neodroid.sshUtils.WorkspaceTool
 import com.ngtv.neodroid.ui.components.RoundToolButton
 import com.ngtv.neodroid.ui.theme.Spacing
@@ -92,6 +96,21 @@ internal fun WorkspaceControlBar(
     )
 }
 
+private data class ToolLabel(val title: String, val cwd: String?)
+
+@Composable
+private fun toolLabel(tool: WorkspaceTool?): ToolLabel {
+    if (tool !is NvimTool) {
+        return ToolLabel(tool?.title ?: "Sessions", cwd = null)
+    }
+
+    val frame by tool.nvimSession.state.collectAsStateWithLifecycle()
+    return ToolLabel(
+        title = frame.title?.takeIf { it.isNotBlank() } ?: tool.title,
+        cwd = frame.cwd?.takeIf { it.isNotBlank() },
+    )
+}
+
 @Composable
 private fun SessionSwitcher(
     tools: List<WorkspaceTool>,
@@ -100,6 +119,7 @@ private fun SessionSwitcher(
     onClose: (WorkspaceTool) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val currentLabel = toolLabel(currentTool)
 
     Box {
         Row(
@@ -111,12 +131,12 @@ private fun SessionSwitcher(
                     enabled = tools.isNotEmpty(),
                     role = Role.Button,
                 ) { expanded = true }
-                .semantics { contentDescription = "Select session" }
+                .semantics { contentDescription = "Select session ${currentLabel.title}" }
                 .padding(horizontal = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = currentTool?.title ?: "Sessions",
+                text = currentLabel.title,
                 modifier = Modifier.widthIn(max = 92.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -145,45 +165,59 @@ private fun SessionSwitcher(
                 )
             } else {
                 tools.forEach { tool ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = tool.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        leadingIcon = {
-                            if (tool.id == currentTool?.id) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_check),
-                                    contentDescription = null,
-                                )
-                            }
-                        },
-                        trailingIcon = {
-                            IconButton(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .semantics {
-                                        contentDescription = "Close session ${tool.title}"
+                    key(tool.id) {
+                        val label = toolLabel(tool)
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(
+                                        text = label.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    label.cwd?.let { cwd ->
+                                        Text(
+                                            text = cwd,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            },
+                            leadingIcon = {
+                                if (tool.id == currentTool?.id) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_check),
+                                        contentDescription = null,
+                                    )
+                                }
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .semantics {
+                                            contentDescription = "Close session ${label.title}"
+                                        },
+                                    onClick = {
+                                        expanded = false
+                                        onClose(tool)
                                     },
-                                onClick = {
-                                    expanded = false
-                                    onClose(tool)
-                                },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_close),
-                                    contentDescription = null,
-                                )
-                            }
-                        },
-                        onClick = {
-                            expanded = false
-                            onSelect(tool)
-                        },
-                    )
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close),
+                                        contentDescription = null,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                expanded = false
+                                onSelect(tool)
+                            },
+                        )
+                    }
                 }
             }
         }
