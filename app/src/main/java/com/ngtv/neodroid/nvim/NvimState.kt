@@ -347,7 +347,7 @@ class NvimFrame(
     val cursorStyleEnabled: Boolean = true,
     val mode: Int = 0,
     val options: Map<String, Any?> = emptyMap(),
-    val isBusy: Boolean = true,
+    val isBusy: Boolean = false,
     val title: String? = null,
     val icon: String? = null,
     val cwd: String? = null,
@@ -382,7 +382,7 @@ class NvimStateActor {
     private var options: Map<String, Any?> = emptyMap()
     private var modeInfo: List<ModeProperty> = emptyList()
     private var cursorStyleEnabled: Boolean = true
-    private var isBusy: Boolean = true
+    private var isBusy: Boolean = false
     private var modeIndex: Long = 0
     private var defaultColors: SpanStyle = SpanStyle(color = Color.White, background = Color.Black)
     private var defaultSpecial: Color = Color.Unspecified

@@ -434,7 +434,7 @@ private fun NvimCursorOverlay(
     baseTextStyle: TextStyle,
 ) {
     val visual = remember(frame) { frame.cursorVisual() }
-    val visible = rememberCursorVisible(frame.cursorMode)
+    val visible = rememberCursorVisible(frame.cursorMode, frame.isBusy)
 
     val glyphLayout = remember(visual, textMeasurer, baseTextStyle) {
         val glyph = visual.glyph ?: return@remember null
@@ -512,13 +512,18 @@ private fun NvimCursorOverlay(
 }
 
 @Composable
-private fun rememberCursorVisible(mode: ModeProperty?): Boolean {
+private fun rememberCursorVisible(mode: ModeProperty?, busy: Boolean): Boolean {
     val wait = mode?.blink_wait?.milliseconds ?: 0L.milliseconds
     val on = mode?.blink_on?.milliseconds ?: 0L.milliseconds
     val off = mode?.blink_off?.milliseconds ?: 0L.milliseconds
-    var visible by remember(wait, on, off) { mutableStateOf(true) }
+    var visible by remember(wait, on, off) { mutableStateOf(!busy) }
 
-    LaunchedEffect(wait, on, off) {
+    LaunchedEffect(wait, on, off, busy) {
+        if (busy) {
+            visible = false
+            return@LaunchedEffect
+        }
+
         visible = true
         if (on <= 0L.milliseconds || off <= 0L.milliseconds) return@LaunchedEffect
 
