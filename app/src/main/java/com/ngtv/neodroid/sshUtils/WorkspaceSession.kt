@@ -42,10 +42,9 @@ class NvimTool(
 }
 
 /**
- * One independent editor workspace inside an [SshConnection].
+ * One workspace inside an SshConnection
  *
- * A workspace owns at most [MAX_TOOLS] tools (Neovim processes). Several
- * workspaces can share the same underlying SSH connection.
+ * A workspace owns at most MAX_TOOLS tools (eg Neovim processes).
  */
 class WorkspaceSession(
     val id: String,
@@ -69,7 +68,7 @@ class WorkspaceSession(
 
     suspend fun startNvim(): NvimTool = withContext(Dispatchers.IO) {
         startTool("Neovim") { sshSession ->
-            sshSession.exec("nvim --embed")
+            sshSession.exec("nvim --embed --cmd 'let g:neodroid = 1'")
         }
     }
 
