@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -87,7 +88,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val intent = Intent(this, SshManagerService::class.java)
-        startForegroundService(intent)
+        ContextCompat.startForegroundService(this, intent)
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         setContent {

@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.ngtv.neodroid.NeodroidApplication
@@ -112,15 +113,17 @@ class SshManagerService : Service() {
         val channelId = "ssh_channel_id"
         val channelName = "SSH Connection"
 
-        val manager = getSystemService(NotificationManager::class.java)
-        if (manager?.getNotificationChannel(channelId) == null) {
-            val channel =
-                NotificationChannel(
-                    channelId,
-                    channelName,
-                    NotificationManager.IMPORTANCE_LOW,
-                )
-            manager?.createNotificationChannel(channel)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            if (manager?.getNotificationChannel(channelId) == null) {
+                val channel =
+                    NotificationChannel(
+                        channelId,
+                        channelName,
+                        NotificationManager.IMPORTANCE_LOW,
+                    )
+                manager?.createNotificationChannel(channel)
+            }
         }
 
         val stopIntent = Intent(this, SshManagerService::class.java).apply {
