@@ -171,7 +171,7 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
 
             nvim.set_client_info(
                 "neodroid", // name
-                mapOf("major" to 1, "minor" to 0, "patch" to 0), // version
+                mapOf("major" to 1, "minor" to 0, "patch" to 0), // API version, not app version
                 "ui", // type
                 // TODO: add an API specification
                 mapOf(
