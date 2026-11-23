@@ -58,6 +58,7 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
     private sealed interface NvimInput {
         data class Keys(val keys: String) : NvimInput
         data class Mouse(val event: NvimMouseEvent) : NvimInput
+        data class Paste(val text: String) : NvimInput
     }
 
     private val inputQueue = Channel<NvimInput>(Channel.UNLIMITED)
@@ -97,6 +98,10 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                             col = event.col,
                         )
                     }
+
+                    is NvimInput.Paste -> {
+                        nvim.paste(input.text)
+                    }
                 }
             }
         } catch (e: CancellationException) {
@@ -115,6 +120,17 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
 
     fun sendMouse(event: NvimMouseEvent) {
         if (inputQueue.trySend(NvimInput.Mouse(event)).isSuccess) {
+            NvimPerf.markInput()
+        }
+    }
+
+    /**
+     * Pastes local text through Neovim's paste handler. This is independent of
+     * the remote clipboard integration setting.
+     */
+    fun paste(text: String) {
+        if (text.isEmpty()) return
+        if (inputQueue.trySend(NvimInput.Paste(text)).isSuccess) {
             NvimPerf.markInput()
         }
     }

@@ -21,7 +21,8 @@ import kotlin.math.roundToInt
  *
  * - tap is left click-release
  * - swipe is wheel scroll at starting position
- * - long press is a left-drag
+ * - long press opens a context menu, or starts a mouse drag when moved
+ * - in selection mode, dragging selects grid text
  */
 class NvimGestureView(context: Context) : View(context) {
 
@@ -33,6 +34,12 @@ class NvimGestureView(context: Context) : View(context) {
     var urlAt: (row: Int, col: Int) -> String? = { _, _ -> null }
     var onOpenUrl: (String) -> Unit = {}
     var onMouse: (NvimMouseEvent) -> Unit = {}
+    var hasSelection: Boolean = false
+    var selectionMode: Boolean = false
+    var onContextMenu: (row: Int, col: Int) -> Unit = { _, _ -> }
+    var onSelectionChange: (Int, Int, Int, Int) -> Unit = { _, _, _, _ -> }
+    var onSelectionEnd: (Int, Int, Int, Int) -> Unit = { _, _, _, _ -> }
+    var onClearSelection: () -> Unit = {}
 
     private val handler = Handler(Looper.getMainLooper())
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
@@ -42,7 +49,7 @@ class NvimGestureView(context: Context) : View(context) {
         ViewConfiguration.get(context).scaledMaximumFlingVelocity.toFloat()
     private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
 
-    private enum class TouchMode { Idle, Pending, Dragging, Scrolling }
+    private enum class TouchMode { Idle, Pending, Selecting, DismissSelection, Dragging, Scrolling }
 
     private var touchMode = TouchMode.Idle
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
@@ -73,6 +80,7 @@ class NvimGestureView(context: Context) : View(context) {
     private var mouseRow = 0
     private var mouseCol = 0
     private var pressedUrl: String? = null
+    private var mouseDragPressSent = false
 
     private var hoverRow = -1
     private var hoverCol = -1
@@ -89,14 +97,10 @@ class NvimGestureView(context: Context) : View(context) {
 
     private val longPressRunnable = Runnable {
         if (touchMode == TouchMode.Pending) {
-            touchMode = TouchMode.Dragging
-            send(
-                NvimMouseButton.Left,
-                NvimMouseAction.Press,
-                touchModifiers,
-                startRow,
-                startCol,
-            )
+            touchMode = if (selectionMode) TouchMode.Selecting else TouchMode.Dragging
+            mouseDragPressSent = false
+            lastRow = startRow
+            lastCol = startCol
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         }
     }
@@ -215,11 +219,21 @@ class NvimGestureView(context: Context) : View(context) {
         downY = event.y
         lastPointerCount = event.pointerCount
 
+        if (hasSelection) {
+            touchMode = TouchMode.DismissSelection
+            return
+        }
+
         val cell = cellFor(event.x, event.y)
         startRow = cell.first
         startCol = cell.second
         lastRow = startRow
         lastCol = startCol
+
+        if (selectionMode) {
+            touchMode = TouchMode.Selecting
+            return
+        }
 
         scrollAccumulatorX = 0f
         scrollAccumulatorY = 0f
@@ -237,6 +251,10 @@ class NvimGestureView(context: Context) : View(context) {
         if (touchMode == TouchMode.Pending) {
             cancelLongPressCallback()
             beginScrolling(event)
+        } else if (touchMode == TouchMode.Selecting) {
+            cancelLongPressCallback()
+            onClearSelection()
+            touchMode = TouchMode.Idle
         } else {
             lastPointerCount = event.pointerCount
             updateScrollAnchor(event)
@@ -270,10 +288,30 @@ class NvimGestureView(context: Context) : View(context) {
                 addScrollDelta(dx, dy)
             }
 
+            TouchMode.Selecting -> {
+                val (x, y) = activePosition(event)
+                val cell = cellFor(x, y)
+                if (cell.first != lastRow || cell.second != lastCol) {
+                    lastRow = cell.first
+                    lastCol = cell.second
+                    onSelectionChange(startRow, startCol, lastRow, lastCol)
+                }
+            }
+
             TouchMode.Dragging -> {
                 val (x, y) = activePosition(event)
                 val cell = cellFor(x, y)
                 if (cell.first != lastRow || cell.second != lastCol) {
+                    if (!mouseDragPressSent) {
+                        mouseDragPressSent = true
+                        send(
+                            NvimMouseButton.Left,
+                            NvimMouseAction.Press,
+                            touchModifiers,
+                            startRow,
+                            startCol,
+                        )
+                    }
                     lastRow = cell.first
                     lastCol = cell.second
                     send(
@@ -286,22 +324,18 @@ class NvimGestureView(context: Context) : View(context) {
                 }
             }
 
-            TouchMode.Idle -> Unit
+            TouchMode.DismissSelection, TouchMode.Idle -> Unit
         }
     }
 
     private fun onPointerUp(event: MotionEvent) {
         val pointerId = event.getPointerId(event.actionIndex)
         if (touchMode == TouchMode.Dragging && pointerId == activePointerId) {
-            send(
-                NvimMouseButton.Left,
-                NvimMouseAction.Release,
-                touchModifiers,
-                lastRow,
-                lastCol,
-            )
-            touchMode = TouchMode.Idle
+            finishMouseDrag()
             cancelLongPressCallback()
+            recycleVelocityTracker()
+        } else if (touchMode == TouchMode.Selecting && pointerId == activePointerId) {
+            finishSelection()
             recycleVelocityTracker()
         } else {
             lastPointerCount = event.pointerCount
@@ -338,17 +372,19 @@ class NvimGestureView(context: Context) : View(context) {
             }
 
             TouchMode.Dragging -> {
-                send(
-                    NvimMouseButton.Left,
-                    NvimMouseAction.Release,
-                    touchModifiers,
-                    lastRow,
-                    lastCol,
-                )
+                finishMouseDrag()
             }
 
             TouchMode.Scrolling -> {
                 startFlingFromVelocity(event)
+            }
+
+            TouchMode.Selecting -> {
+                finishSelection()
+            }
+
+            TouchMode.DismissSelection -> {
+                onClearSelection()
             }
 
             TouchMode.Idle -> Unit
@@ -359,9 +395,19 @@ class NvimGestureView(context: Context) : View(context) {
         recycleVelocityTracker()
     }
 
-    private fun cancelTouch() {
+    private fun finishSelection() {
         cancelLongPressCallback()
-        if (touchMode == TouchMode.Dragging) {
+        val moved = lastRow != startRow || lastCol != startCol
+        if (moved) {
+            onSelectionEnd(startRow, startCol, lastRow, lastCol)
+        } else {
+            onContextMenu(startRow, startCol)
+        }
+        touchMode = TouchMode.Idle
+    }
+
+    private fun finishMouseDrag() {
+        if (mouseDragPressSent) {
             send(
                 NvimMouseButton.Left,
                 NvimMouseAction.Release,
@@ -369,6 +415,27 @@ class NvimGestureView(context: Context) : View(context) {
                 lastRow,
                 lastCol,
             )
+        } else {
+            onContextMenu(startRow, startCol)
+        }
+        mouseDragPressSent = false
+        touchMode = TouchMode.Idle
+    }
+
+    private fun cancelTouch() {
+        cancelLongPressCallback()
+        if (touchMode == TouchMode.Dragging && mouseDragPressSent) {
+            send(
+                NvimMouseButton.Left,
+                NvimMouseAction.Release,
+                touchModifiers,
+                lastRow,
+                lastCol,
+            )
+        }
+        mouseDragPressSent = false
+        if (touchMode == TouchMode.Selecting) {
+            onClearSelection()
         }
         stopFling()
         touchMode = TouchMode.Idle

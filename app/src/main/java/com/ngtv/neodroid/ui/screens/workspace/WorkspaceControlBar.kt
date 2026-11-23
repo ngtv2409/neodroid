@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -53,11 +52,12 @@ internal fun WorkspaceControlBar(
     tools: List<WorkspaceTool>,
     currentTool: WorkspaceTool?,
     onSelectTool: (WorkspaceTool) -> Unit,
-    onCloseTool: (WorkspaceTool) -> Unit,
     onAddTool: () -> Unit,
     onKeyAction: (ExtraKeyAction) -> Unit,
-    onBack: () -> Unit,
     onOpenKeyboard: () -> Unit,
+    onOpenSideBar: () -> Unit,
+    selectionMode: Boolean,
+    onToggleSelection: () -> Unit,
     modifier: Modifier = Modifier,
     extraKeysState: ExtraKeysState = rememberExtraKeysState(),
 ) {
@@ -73,9 +73,14 @@ internal fun WorkspaceControlBar(
             )
             Spacer(modifier = Modifier.width(Spacing.xxs))
             RoundToolButton(
-                icon = painterResource(R.drawable.ic_arrow_back),
-                contentDescription = "Back",
-                onClick = onBack,
+                icon = painterResource(R.drawable.ic_text_select_start),
+                contentDescription = if (selectionMode) {
+                    "Stop selecting text"
+                } else {
+                    "Select text"
+                },
+                selected = selectionMode,
+                onClick = onToggleSelection,
             )
             Spacer(modifier = Modifier.width(Spacing.xxs))
             RoundToolButton(
@@ -88,18 +93,22 @@ internal fun WorkspaceControlBar(
                 tools = tools,
                 currentTool = currentTool,
                 onSelect = onSelectTool,
-                onClose = onCloseTool,
+                onAdd = onAddTool,
             )
             Spacer(modifier = Modifier.width(Spacing.xxs))
-            AddSessionButton(onClick = onAddTool)
+            RoundToolButton(
+                icon = painterResource(R.drawable.ic_menu),
+                contentDescription = "Workspace menu",
+                onClick = onOpenSideBar,
+            )
         },
     )
 }
 
-private data class ToolLabel(val title: String, val cwd: String?)
+internal data class ToolLabel(val title: String, val cwd: String?)
 
 @Composable
-private fun toolLabel(tool: WorkspaceTool?): ToolLabel {
+internal fun toolLabel(tool: WorkspaceTool?): ToolLabel {
     if (tool !is NvimTool) {
         return ToolLabel(tool?.title ?: "Sessions", cwd = null)
     }
@@ -116,7 +125,7 @@ private fun SessionSwitcher(
     tools: List<WorkspaceTool>,
     currentTool: WorkspaceTool?,
     onSelect: (WorkspaceTool) -> Unit,
-    onClose: (WorkspaceTool) -> Unit,
+    onAdd: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val currentLabel = toolLabel(currentTool)
@@ -194,24 +203,6 @@ private fun SessionSwitcher(
                                     )
                                 }
                             },
-                            trailingIcon = {
-                                IconButton(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .semantics {
-                                            contentDescription = "Close session ${label.title}"
-                                        },
-                                    onClick = {
-                                        expanded = false
-                                        onClose(tool)
-                                    },
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_close),
-                                        contentDescription = null,
-                                    )
-                                }
-                            },
                             onClick = {
                                 expanded = false
                                 onSelect(tool)
@@ -220,15 +211,19 @@ private fun SessionSwitcher(
                     }
                 }
             }
+            DropdownMenuItem(
+                text = { Text("New session") },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add),
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onAdd()
+                },
+            )
         }
     }
-}
-
-@Composable
-private fun AddSessionButton(onClick: () -> Unit) {
-    RoundToolButton(
-        icon = painterResource(R.drawable.ic_add),
-        contentDescription = "New session",
-        onClick = onClick,
-    )
 }

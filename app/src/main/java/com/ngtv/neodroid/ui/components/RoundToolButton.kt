@@ -29,12 +29,24 @@ fun RoundToolButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    selected: Boolean = false,
 ) {
+    val background = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
     Box(
         modifier = modifier
             .size(32.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .background(background)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
@@ -42,7 +54,7 @@ fun RoundToolButton(
         Icon(
             painter = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = contentColor,
         )
     }
 }

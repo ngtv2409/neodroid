@@ -184,6 +184,49 @@ class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd:
 
     fun spanEndingAt(column: Int): TextSpan? = spans.firstOrNull { it.endCol == column }
 
+    /**
+     * Returns the raw text in the given column range.
+     *
+     * Unlike [extract], this treats the row as plain text: gaps and partially
+     * covered wide characters are filled with spaces so the returned string is
+     * usable for clipboard selection.
+     */
+    fun textBetween(startCol: Int, endCol: Int): String {
+        val from = startCol.coerceAtLeast(0)
+        val to = endCol.coerceAtLeast(from)
+        if (from >= to) return ""
+
+        val result = StringBuilder(to - from)
+        var column = from
+        spans.forEach { span ->
+            if (span.endCol <= from || span.startCol >= to) return@forEach
+
+            val overlapStart = maxOf(from, span.startCol)
+            val overlapEnd = minOf(to, span.endCol)
+            if (overlapStart > column) {
+                result.append(" ".repeat(overlapStart - column))
+            }
+
+            val slice = if (overlapStart == span.startCol && overlapEnd == span.endCol) {
+                span
+            } else {
+                span.slice(overlapStart, overlapEnd)
+            }
+
+            if (slice == null) {
+                result.append(" ".repeat(overlapEnd - overlapStart))
+            } else {
+                result.append(slice.text)
+            }
+            column = overlapEnd
+        }
+
+        if (column < to) {
+            result.append(" ".repeat(to - column))
+        }
+        return result.toString()
+    }
+
     companion object {
         fun blank(width: Int): TextRow {
             val columns = width.coerceAtLeast(0)

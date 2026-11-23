@@ -1,5 +1,6 @@
 package com.ngtv.neodroid.ui.screens.workspace
 
+import android.content.ClipboardManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,16 +8,21 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +61,7 @@ import kotlinx.coroutines.withContext
 fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
 
     val initialIndex = remember(session.id) {
         session.tools.indexOfFirst { it.id == session.activeToolId }
@@ -63,6 +70,7 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     }
 
     var selectedIndex by remember(session.id) { mutableIntStateOf(initialIndex) }
+    var selectionMode by remember(session.id) { mutableStateOf(false) }
     val pagerState = rememberPagerState(initialPage = initialIndex) { session.tools.size }
     val currentTool = session.tools.getOrNull(selectedIndex)
     val extraKeysState = rememberExtraKeysState()
@@ -119,11 +127,38 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
         errorMessage = null
     }
 
+    fun pasteIntoActiveTool() {
+        val tool = currentTool as? NvimTool ?: return
+        val text = runCatching {
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            val clip = clipboard?.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                clip.getItemAt(0)?.coerceToText(context)?.toString()
+            } else {
+                null
+            }
+        }.getOrNull()
+
+        if (text.isNullOrEmpty()) {
+            errorMessage = "Clipboard is empty"
+        } else {
+            tool.nvimSession.paste(text)
+        }
+    }
+
+    fun closeSideBarThen(action: () -> Unit) {
+        scope.launch {
+            drawerState.close()
+            action()
+        }
+    }
+
     fun selectTool(tool: WorkspaceTool) {
         val index = session.tools.indexOfFirst { it.id == tool.id }
         if (index < 0) return
 
         extraKeysState.clearModifiers()
+        selectionMode = false
         selectedIndex = index
         session.activateTool(tool.id)
         scope.launch {
@@ -137,6 +172,7 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
 
         val currentIndex = selectedIndex
         extraKeysState.clearModifiers()
+        selectionMode = false
 
         scope.launch {
             withContext(Dispatchers.IO) {
@@ -162,6 +198,7 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     fun createSession(type: SessionType, inputs: Map<String, String>) {
         showCreateSession = false
         extraKeysState.clearModifiers()
+        selectionMode = false
 
         scope.launch {
             try {
@@ -189,105 +226,157 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
         }
     }
 
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
-        contentWindowInsets = WindowInsets(0),
-        snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState)
-        },
-        bottomBar = {
-            WorkspaceControlBar(
-                tools = session.tools,
-                currentTool = currentTool,
-                onSelectTool = ::selectTool,
-                onCloseTool = ::closeTool,
-                onAddTool = {
-                    extraKeysState.clearModifiers()
-                    showCreateSession = true
-                },
-                onKeyAction = { action ->
-                    val tool = currentTool as? NvimTool
-                    if (tool != null) {
-                        when (action) {
-                            is ExtraKeyAction.SendKeys ->
-                                tool.nvimSession.sendInput(action.keys)
-
-                            is ExtraKeyAction.Modifier -> Unit
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = drawerState.targetValue == DrawerValue.Open,
+        drawerContent = {
+            ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
+                WorkspaceSideBar(
+                    tools = session.tools,
+                    currentTool = currentTool,
+                    onSelectTool = { tool ->
+                        closeSideBarThen { selectTool(tool) }
+                    },
+                    onCloseTool = ::closeTool,
+                    onAddTool = {
+                        closeSideBarThen {
+                            extraKeysState.clearModifiers()
+                            selectionMode = false
+                            showCreateSession = true
                         }
-                    }
-                },
-                onBack = onBack,
-                onOpenKeyboard = { inputView.focusAndShowKeyboard() },
-                extraKeysState = extraKeysState,
-            )
+                    },
+                    onBack = {
+                        closeSideBarThen(onBack)
+                    },
+                )
+            }
         },
-    ) { innerPadding ->
-        Box(
+    ) {
+        Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            if (session.tools.isEmpty()) {
-                EmptyWorkspace(
-                    onAddSession = { showCreateSession = true },
-                )
-            } else {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    userScrollEnabled = false,
-                ) { page ->
-                    when (val tool = session.tools.getOrNull(page)) {
-                        is NvimTool -> {
-                            val failure by tool.nvimSession.failure
-                                .collectAsStateWithLifecycle()
+                .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
+            contentWindowInsets = WindowInsets(0),
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState)
+            },
+            bottomBar = {
+                WorkspaceControlBar(
+                    tools = session.tools,
+                    currentTool = currentTool,
+                    onSelectTool = ::selectTool,
+                    onAddTool = {
+                        extraKeysState.clearModifiers()
+                        selectionMode = false
+                        showCreateSession = true
+                    },
+                    onKeyAction = { action ->
+                        val tool = currentTool as? NvimTool
+                        if (tool != null) {
+                            when (action) {
+                                is ExtraKeyAction.SendKeys ->
+                                    tool.nvimSession.sendInput(action.keys)
 
-                            if (failure != null) {
-                                LaunchedEffect(tool.id, failure) {
-                                    errorMessage = failure?.message
-                                        ?: "Neovim session ended"
-                                    closeTool(tool)
-                                }
-                            } else {
-                                val frame by tool.nvimSession.state
-                                    .collectAsStateWithLifecycle()
-                                NvimEditor(
-                                    frame = frame,
-                                    onResize = { width, height ->
-                                        tool.nvimSession.resize(width, height)
-                                    },
-                                    onMouse = { event ->
-                                        tool.nvimSession.sendMouse(event)
-                                    },
-                                    takeModifiers = {
-                                        extraKeysState.takeModifierString()
-                                    },
-                                    onOpenUrlError = { message ->
-                                        errorMessage = message
-                                    },
-                                    fontFamily = editorFontFamily,
-                                    fontSize = editorFontSizeSp,
-                                    lineHeight = editorLineHeightSp,
-                                )
+                                is ExtraKeyAction.Modifier -> Unit
                             }
                         }
+                    },
+                    onOpenKeyboard = { inputView.focusAndShowKeyboard() },
+                    onOpenSideBar = {
+                        inputView.giveUpFocus()
+                        extraKeysState.clearModifiers()
+                        scope.launch { drawerState.open() }
+                    },
+                    selectionMode = selectionMode,
+                    onToggleSelection = {
+                        if (currentTool is NvimTool) {
+                            extraKeysState.clearModifiers()
+                            selectionMode = !selectionMode
+                            if (selectionMode) {
+                                inputView.giveUpFocus()
+                                errorMessage = "Drag to select text"
+                            }
+                        }
+                    },
+                    extraKeysState = extraKeysState,
+                )
+            },
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                if (session.tools.isEmpty()) {
+                    EmptyWorkspace(
+                        onAddSession = { showCreateSession = true },
+                    )
+                } else {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        userScrollEnabled = false,
+                    ) { page ->
+                        when (val tool = session.tools.getOrNull(page)) {
+                            is NvimTool -> {
+                                val failure by tool.nvimSession.failure
+                                    .collectAsStateWithLifecycle()
 
-                        null -> Unit
+                                if (failure != null) {
+                                    LaunchedEffect(tool.id, failure) {
+                                        errorMessage = failure?.message
+                                            ?: "Neovim session ended"
+                                        closeTool(tool)
+                                    }
+                                } else {
+                                    val frame by tool.nvimSession.state
+                                        .collectAsStateWithLifecycle()
+                                    NvimEditor(
+                                        frame = frame,
+                                        onResize = { width, height ->
+                                            tool.nvimSession.resize(width, height)
+                                        },
+                                        onMouse = { event ->
+                                            tool.nvimSession.sendMouse(event)
+                                        },
+                                        takeModifiers = {
+                                            extraKeysState.takeModifierString()
+                                        },
+                                        onPaste = { text ->
+                                            tool.nvimSession.paste(text)
+                                        },
+                                        onMessage = { message ->
+                                            errorMessage = message
+                                        },
+                                        onOpenUrlError = { message ->
+                                            errorMessage = message
+                                        },
+                                        selectionMode = selectionMode,
+                                        onSelectionFinished = {
+                                            selectionMode = false
+                                        },
+                                        fontFamily = editorFontFamily,
+                                        fontSize = editorFontSizeSp,
+                                        lineHeight = editorLineHeightSp,
+                                    )
+                                }
+                            }
+
+                            null -> Unit
+                        }
                     }
                 }
-            }
 
-            NvimInputCapture(
-                view = inputView,
-                onInput = { input ->
-                    val tool = currentTool as? NvimTool
-                    tool?.nvimSession?.sendInput(
-                        extraKeysState.applyToInput(input),
-                    )
-                },
-            )
+                NvimInputCapture(
+                    view = inputView,
+                    onInput = { input ->
+                        val tool = currentTool as? NvimTool
+                        tool?.nvimSession?.sendInput(
+                            extraKeysState.applyToInput(input),
+                        )
+                    },
+                )
+            }
         }
     }
 

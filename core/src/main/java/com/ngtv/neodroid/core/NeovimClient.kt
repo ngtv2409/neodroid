@@ -166,6 +166,10 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
         )
     }
 
+    suspend fun paste(text: String) {
+        call("nvim_paste", listOf(text, true, -1))
+    }
+
     fun setRequestHandler(handler: RpcRequestHandler) {
         requestHandler = handler
     }

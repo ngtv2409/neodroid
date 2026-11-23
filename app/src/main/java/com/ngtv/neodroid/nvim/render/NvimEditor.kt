@@ -1,5 +1,7 @@
 package com.ngtv.neodroid.nvim.render
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Rect
 import android.text.InputType
@@ -18,6 +20,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
@@ -76,6 +82,10 @@ fun NvimEditor(
     onResize: suspend (width: Int, height: Int) -> Unit,
     onMouse: (NvimMouseEvent) -> Unit,
     takeModifiers: () -> String,
+    onPaste: (String) -> Unit = {},
+    onMessage: (String) -> Unit = {},
+    selectionMode: Boolean = false,
+    onSelectionFinished: () -> Unit = {},
     onOpenUrlError: (String) -> Unit = {},
     fontFamily: FontFamily,
     fontSize: TextUnit,
@@ -84,6 +94,82 @@ fun NvimEditor(
 ) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val context = LocalContext.current
+
+    var selection by remember { mutableStateOf<GridSelection?>(null) }
+    var menu by remember { mutableStateOf<GridMenu?>(null) }
+
+    LaunchedEffect(selectionMode) {
+        if (!selectionMode) {
+            selection = null
+            menu = null
+        }
+    }
+
+    val clipboard = remember(context) {
+        context.getSystemService(ClipboardManager::class.java)
+    }
+
+    fun finishSelectionMode() {
+        if (selectionMode) onSelectionFinished()
+    }
+
+    fun copySelection() {
+        val selected = selection ?: return
+        val text = frame.selectedText(selected)
+        if (text.isEmpty()) {
+            onMessage("Nothing to copy")
+        } else {
+            val copied = clipboard != null && runCatching {
+                clipboard.setPrimaryClip(ClipData.newPlainText("Neovim", text))
+            }.isSuccess
+            if (copied) {
+                val lines = text.count { it == '\n' } + 1
+                onMessage(if (lines == 1) "Copied line" else "Copied $lines lines")
+            } else {
+                onMessage("Could not copy to clipboard")
+            }
+        }
+        selection = null
+        menu = null
+        finishSelectionMode()
+    }
+
+    fun pasteFromClipboard() {
+        val text = runCatching {
+            val clip = clipboard?.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                clip.getItemAt(0)?.coerceToText(context)?.toString()
+            } else {
+                null
+            }
+        }.getOrNull()
+
+        if (text.isNullOrEmpty()) {
+            onMessage("Clipboard is empty")
+        } else {
+            onPaste(text)
+        }
+        selection = null
+        menu = null
+        finishSelectionMode()
+    }
+
+    fun selectAll(columns: Int) {
+        val lastRow = frame.rows.lastIndex
+        if (lastRow < 0) return
+        val lastColumn = (frame.rows.maxOfOrNull { it.columns } ?: columns)
+            .coerceAtLeast(1)
+            .minus(1)
+        selection = GridSelection(
+            anchor = GridCell(0, 0),
+            focus = GridCell(lastRow, lastColumn),
+        )
+        menu = GridMenu(
+            kind = GridMenuKind.Selection,
+            cell = GridCell(lastRow, lastColumn),
+        )
+    }
 
     val baseTextStyle = remember(fontFamily, fontSize, lineHeight) {
         TextStyle(
@@ -159,6 +245,12 @@ fun NvimEditor(
                     cellHeight = cellHeight,
                     blinkVisible = blinkVisible,
                 )
+                NvimSelectionOverlay(
+                    selection = selection,
+                    cellWidth = cellWidth,
+                    cellHeight = cellHeight,
+                    columns = columns,
+                )
                 NvimCursorOverlay(
                     frame = frame,
                     cellWidth = cellWidth,
@@ -171,6 +263,8 @@ fun NvimEditor(
                     cellHeightPx = with(density) { cellHeight.toPx() },
                     columns = columns,
                     rows = visibleRows,
+                    hasSelection = selection != null,
+                    selectionMode = selectionMode,
                     urlAt = frame::urlAt,
                     onOpenUrl = { url ->
                         runCatching { uriHandler.openUri(url) }.onFailure {
@@ -179,8 +273,194 @@ fun NvimEditor(
                     },
                     onMouse = onMouse,
                     takeModifiers = takeModifiers,
+                    onContextMenu = { row, col ->
+                        selection = null
+                        menu = GridMenu(
+                            kind = GridMenuKind.Context,
+                            cell = GridCell(row, col),
+                        )
+                    },
+                    onSelectionChange = { anchorRow, anchorCol, focusRow, focusCol ->
+                        menu = null
+                        selection = GridSelection(
+                            anchor = GridCell(anchorRow, anchorCol),
+                            focus = GridCell(focusRow, focusCol),
+                        )
+                    },
+                    onSelectionEnd = { anchorRow, anchorCol, focusRow, focusCol ->
+                        selection = GridSelection(
+                            anchor = GridCell(anchorRow, anchorCol),
+                            focus = GridCell(focusRow, focusCol),
+                        )
+                        menu = GridMenu(
+                            kind = GridMenuKind.Selection,
+                            cell = GridCell(focusRow, focusCol),
+                        )
+                    },
+                    onClearSelection = {
+                        selection = null
+                        menu = null
+                        finishSelectionMode()
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
+                NvimGridMenu(
+                    menu = menu,
+                    cellWidth = cellWidth,
+                    cellHeight = cellHeight,
+                    columns = columns,
+                    rows = visibleRows,
+                    onDismiss = {
+                        menu = null
+                        selection = null
+                        finishSelectionMode()
+                    },
+                    onPaste = ::pasteFromClipboard,
+                    onCopy = ::copySelection,
+                    onSelectAll = { selectAll(columns) },
+                )
+            }
+        }
+    }
+}
+
+private data class GridCell(val row: Int, val col: Int)
+
+private data class GridSelection(val anchor: GridCell, val focus: GridCell) {
+    fun normalized(): GridSelection {
+        val anchorFirst = anchor.row < focus.row ||
+            (anchor.row == focus.row && anchor.col <= focus.col)
+        return if (anchorFirst) this else GridSelection(anchor = focus, focus = anchor)
+    }
+}
+
+private enum class GridMenuKind { Context, Selection }
+
+private data class GridMenu(val kind: GridMenuKind, val cell: GridCell)
+
+private fun NvimFrame.selectedText(selection: GridSelection): String {
+    val lastRow = rows.lastIndex
+    if (lastRow < 0) return ""
+
+    val normalized = selection.normalized()
+    val startRow = normalized.anchor.row.coerceIn(0, lastRow)
+    val endRow = normalized.focus.row.coerceIn(startRow, lastRow)
+    val builder = StringBuilder()
+
+    for (rowIndex in startRow..endRow) {
+        if (rowIndex > startRow) builder.append('\n')
+
+        val row = rows.getOrNull(rowIndex) ?: continue
+        val rowColumns = row.columns
+        val from = if (rowIndex == startRow) {
+            normalized.anchor.col.coerceIn(0, rowColumns)
+        } else {
+            0
+        }
+        val to = if (rowIndex == endRow) {
+            (normalized.focus.col + 1).coerceIn(0, rowColumns)
+        } else {
+            rowColumns
+        }
+
+        if (to > from) {
+            builder.append(row.textBetween(from, to).trimEnd())
+        }
+    }
+
+    return builder.toString()
+}
+
+@Composable
+private fun NvimSelectionOverlay(
+    selection: GridSelection?,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    columns: Int,
+) {
+    if (selection == null) return
+
+    val normalized = selection.normalized()
+    val color = MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val width = cellWidth.toPx()
+        val height = cellHeight.toPx()
+        val startRow = normalized.anchor.row.coerceAtLeast(0)
+        val endRow = normalized.focus.row.coerceAtLeast(startRow)
+
+        for (row in startRow..endRow) {
+            val startCol = if (row == startRow) {
+                normalized.anchor.col.coerceIn(0, columns - 1)
+            } else {
+                0
+            }
+            val endCol = if (row == endRow) {
+                (normalized.focus.col + 1).coerceIn(startCol + 1, columns)
+            } else {
+                columns
+            }
+            drawRect(
+                color = color,
+                topLeft = Offset(startCol * width, row * height),
+                size = Size((endCol - startCol) * width, height),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NvimGridMenu(
+    menu: GridMenu?,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    columns: Int,
+    rows: Int,
+    onDismiss: () -> Unit,
+    onPaste: () -> Unit,
+    onCopy: () -> Unit,
+    onSelectAll: () -> Unit,
+) {
+    val current = menu ?: return
+    val column = current.cell.col.coerceIn(0, (columns - 1).coerceAtLeast(0))
+    val row = current.cell.row.coerceIn(0, (rows - 1).coerceAtLeast(0))
+
+    Box(
+        modifier = Modifier.offset(
+            x = cellWidth * column,
+            y = cellHeight * row,
+        ),
+    ) {
+        DropdownMenu(
+            expanded = true,
+            onDismissRequest = onDismiss,
+        ) {
+            when (current.kind) {
+                GridMenuKind.Context -> {
+                    DropdownMenuItem(
+                        text = { Text("Paste") },
+                        onClick = onPaste,
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Select all") },
+                        onClick = onSelectAll,
+                    )
+                }
+
+                GridMenuKind.Selection -> {
+                    DropdownMenuItem(
+                        text = { Text("Copy") },
+                        onClick = onCopy,
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Select all") },
+                        onClick = onSelectAll,
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Paste") },
+                        onClick = onPaste,
+                    )
+                }
             }
         }
     }
@@ -601,16 +881,26 @@ private fun NvimGestureOverlay(
     cellHeightPx: Float,
     columns: Int,
     rows: Int,
+    hasSelection: Boolean,
+    selectionMode: Boolean,
     urlAt: (row: Int, col: Int) -> String?,
     onOpenUrl: (String) -> Unit,
     onMouse: (NvimMouseEvent) -> Unit,
     takeModifiers: () -> String,
+    onContextMenu: (row: Int, col: Int) -> Unit,
+    onSelectionChange: (Int, Int, Int, Int) -> Unit,
+    onSelectionEnd: (Int, Int, Int, Int) -> Unit,
+    onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentUrlAt by rememberUpdatedState(urlAt)
     val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
     val currentOnMouse by rememberUpdatedState(onMouse)
     val currentTakeModifiers by rememberUpdatedState(takeModifiers)
+    val currentOnContextMenu by rememberUpdatedState(onContextMenu)
+    val currentOnSelectionChange by rememberUpdatedState(onSelectionChange)
+    val currentOnSelectionEnd by rememberUpdatedState(onSelectionEnd)
+    val currentOnClearSelection by rememberUpdatedState(onClearSelection)
 
     AndroidView(
         factory = { context -> NvimGestureView(context) },
@@ -619,10 +909,16 @@ private fun NvimGestureOverlay(
             view.rows = rows
             view.cellWidthPx = cellWidthPx.coerceAtLeast(1f)
             view.cellHeightPx = cellHeightPx.coerceAtLeast(1f)
+            view.hasSelection = hasSelection
+            view.selectionMode = selectionMode
             view.urlAt = currentUrlAt
             view.onOpenUrl = currentOnOpenUrl
             view.onMouse = currentOnMouse
             view.takeModifiers = currentTakeModifiers
+            view.onContextMenu = currentOnContextMenu
+            view.onSelectionChange = currentOnSelectionChange
+            view.onSelectionEnd = currentOnSelectionEnd
+            view.onClearSelection = currentOnClearSelection
         },
         modifier = modifier,
     )
