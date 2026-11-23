@@ -274,8 +274,9 @@ object SettingsCatalog {
                         NoteSetting(
                             id = "license_note",
                             title = "Apache License 2.0",
-                            description = "Neodroid and its bundled Material Symbols " +
-                                "icons are distributed under the Apache License 2.0.",
+                            description = "Neodroid is distributed under the Apache License " +
+                                "2.0. Third-party components and assets keep their own " +
+                                "licenses; see Third-party notices.",
                         ),
                         ActionSetting(
                             id = "view_license",
@@ -301,6 +302,31 @@ object SettingsCatalog {
                             description = "github.com/ngtv2409/neodroid",
                             action = SettingsAction.OpenUrl(
                                 "https://github.com/ngtv2409/neodroid",
+                            ),
+                        ),
+                    ),
+                ),
+                SettingsSection(
+                    title = "Third-party software",
+                    entries = listOf(
+                        ActionSetting(
+                            id = "third_party_notices",
+                            title = "Third-party notices",
+                            description = "Licenses and attributions for libraries and " +
+                                "assets used by Neodroid.",
+                            action = SettingsAction.ShowText(
+                                assetPath = "licenses/THIRD-PARTY-NOTICES.txt",
+                                title = "Third-party notices",
+                            ),
+                        ),
+                        ActionSetting(
+                            id = "bouncy_castle_license",
+                            title = "Bouncy Castle",
+                            description = "Cryptography provider, licensed under the " +
+                                "Bouncy Castle Licence.",
+                            action = SettingsAction.ShowText(
+                                assetPath = "licenses/BOUNCY-CASTLE.txt",
+                                title = "Bouncy Castle Licence",
                             ),
                         ),
                     ),

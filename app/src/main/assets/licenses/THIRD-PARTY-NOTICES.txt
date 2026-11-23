@@ -1,0 +1,115 @@
+Neodroid third-party notices
+============================
+
+Neodroid is licensed under the Apache License 2.0. Third-party software and
+assets keep their original licenses. The full Apache License 2.0 text is
+available from the Neodroid About screen as "View license".
+
+Apache License 2.0
+------------------
+The following components are distributed under the Apache License 2.0:
+
+- AndroidX / Jetpack libraries, including Activity, Annotation, Collection,
+  Compose, DataStore, Emoji2, Lifecycle, Navigation, Room, SavedState, SQLite,
+  and related Android Open Source Project libraries. The separately packaged
+  DataStore Preferences External Protobuf library is BSD-3-Clause; see below.
+- Kotlin standard library, kotlinx-coroutines, kotlinx-serialization-core,
+  atomicfu, and JetBrains annotations (JetBrains).
+- sshj and asn-one (Hierynomus).
+- MessagePack for Java, msgpack-core.
+- Okio (Square).
+- Guava ListenableFuture (Google).
+- JSpecify annotations.
+- Material Symbols icons (Google).
+
+The complete Apache License 2.0 text is bundled as APACHE-2.0.txt.
+
+
+Bouncy Castle Licence
+---------------------
+The following components are distributed under the Bouncy Castle Licence:
+
+- bcprov-jdk18on
+- bcpkix-jdk18on
+- bcutil-jdk18on
+
+Copyright (c) 2000 - 2026 The Legion of the Bouncy Castle Inc.
+
+The complete licence text is bundled as BOUNCY-CASTLE.txt.
+
+
+MIT License
+-----------
+SLF4J API (org.slf4j:slf4j-api)
+Copyright (c) 2004-2022 QOS.ch Sarl (Switzerland)
+All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+BSD 3-Clause License
+--------------------
+DataStore Preferences External Protobuf
+(androidx.datastore:datastore-preferences-external-protobuf, a repackaged
+Protocol Buffers runtime)
+
+Copyright 2008 Google Inc. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of Google Inc. nor the names of its contributors may be used
+  to endorse or promote products derived from this software without specific
+  prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+Input handling attribution
+--------------------------
+Neodroid's hidden input view is modeled after Termux's TerminalView. The
+relevant terminal-view and terminal-emulator code is licensed under the Apache
+License 2.0:
+https://github.com/termux/termux-app
+
+
+Bundled assets and fonts
+------------------------
+Material Symbols icons are licensed under the Apache License 2.0.
+
+The bundled Nerd Fonts and their upstream font licenses are documented in
+FONT-LICENSES.txt. Nerd Fonts patched fonts are distributed under the SIL Open
+Font License 1.1, and the Nerd Fonts patcher source is MIT licensed. For the
+complete glyph-source license audit, see:
+https://github.com/ryanoasis/nerd-fonts/blob/-/license-audit.md
