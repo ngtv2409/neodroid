@@ -142,6 +142,16 @@ class NeovimClient(inputStream: InputStream, output: OutputStream, parentScope: 
         call("nvim_ui_try_resize", listOf(width, height))
     }
 
+    suspend fun set_client_info(
+        name: String,
+        version: Map<String, Any?>,
+        type: String,
+        methods: Map<String, Any?>,
+        attributes: Map<String, Any?>,
+    ) {
+        call("nvim_set_client_info", listOf(name, version, type, methods, attributes))
+    }
+
     suspend fun inputMouse(
         button: String,
         action: String,

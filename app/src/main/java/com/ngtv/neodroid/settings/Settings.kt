@@ -155,6 +155,15 @@ object Settings {
         suffix = "%",
     )
 
+    val allowRemoteClipboard = Setting.Toggle(
+        key = booleanPreferencesKey("integration.remote_clipboard"),
+        defaultValue = false,
+        title = "Allow remote clipboard",
+        description = "Let the remote process read and write your clipboard at will. " +
+            "This allows remote Neovim to read anything currently on your clipboard " +
+            "at any time. Only enable this for hosts you trust.",
+    )
+
     val showHomeOnline = Setting.Toggle(
         key = booleanPreferencesKey("home.show_online"),
         defaultValue = true,
@@ -204,6 +213,19 @@ object SettingsCatalog {
                         Settings.editorFontFamily,
                         Settings.editorFontSize,
                         Settings.editorLineHeight,
+                    ),
+                ),
+            ),
+        ),
+        SettingsCategory(
+            id = "integration",
+            title = "Integration",
+            summary = "Control what remote Neovim sessions can access.",
+            sections = listOf(
+                SettingsSection(
+                    title = "Clipboard",
+                    entries = listOf(
+                        Settings.allowRemoteClipboard,
                     ),
                 ),
             ),

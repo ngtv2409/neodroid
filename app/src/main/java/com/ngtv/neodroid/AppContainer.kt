@@ -9,13 +9,21 @@ import com.ngtv.neodroid.database.AuthKeyRepository
 import com.ngtv.neodroid.database.AuthKeyViewModel
 import com.ngtv.neodroid.database.SSHHostRepository
 import com.ngtv.neodroid.database.SSHHostViewModel
+import com.ngtv.neodroid.nvim.NvimIntegrationHandler
 import com.ngtv.neodroid.security.AuthKeyGenerator
 import com.ngtv.neodroid.security.AuthKeyMaterial
 import com.ngtv.neodroid.security.KeystoreKeyManager
+import com.ngtv.neodroid.settings.SettingsRepository
 
 class AppContainer(context: Context) {
 
     private val database = AppDatabase.getInstance(context.applicationContext)
+
+    private val settingsRepository = SettingsRepository(context)
+
+    init {
+        NvimIntegrationHandler.initialize(context, settingsRepository)
+    }
 
     private val keystoreKeyManager = KeystoreKeyManager.getInstance(context)
 

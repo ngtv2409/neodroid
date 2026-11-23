@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.ngtv.neodroid.core.NeovimClient
+import com.ngtv.neodroid.nvim.NvimIntegrationHandler
 import com.ngtv.neodroid.nvim.NvimSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -117,6 +118,7 @@ class WorkspaceSession(
                 scope,
             )
             client = nvimClient
+            NvimIntegrationHandler.attach(nvimClient)
             val nvimSession = NvimSession.create(nvimClient)
             val sequence = toolSequence.incrementAndGet()
             val tool =

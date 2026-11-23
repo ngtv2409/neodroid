@@ -153,6 +153,18 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
                 "ext_linegrid" to true,
             )
 
+            nvim.set_client_info(
+                "neodroid", // name
+                mapOf("major" to 1, "minor" to 0, "patch" to 0), // version
+                "ui", // type
+                // TODO: add an API specification
+                mapOf(
+                    "neodroid_clipboard_get" to mapOf("async" to false, "nargs" to 0),
+                    "neodroid_clipboard_set" to mapOf("async" to false, "nargs" to 1),
+                ), // methods
+                emptyMap(), // attributes
+            )
+
             session.currentWidth = DEFAULT_WIDTH
             session.currentHeight = DEFAULT_HEIGHT
             nvim.ui_attach(DEFAULT_WIDTH, DEFAULT_HEIGHT, attachOpts)
