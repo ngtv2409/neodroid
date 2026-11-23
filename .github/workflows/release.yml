@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NEODROID_KEYSTORE_FILE: ${{ runner.temp }}/release-key.jks
+      NEODROID_KEYSTORE_PASSWORD: ${{ secrets.NEODROID_KEYSTORE_PASSWORD }}
+      NEODROID_REL_KEY_ALIAS: ${{ secrets.NEODROID_REL_KEY_ALIAS }}
+      NEODROID_KEY_PASSWORD: ${{ secrets.NEODROID_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-37"
+
+      - name: Decode release keystore
+        env:
+          NEODROID_KEYSTORE_BASE64: ${{ secrets.NEODROID_KEYSTORE_BASE64 }}
+        run: |
+          for var in NEODROID_KEYSTORE_BASE64 NEODROID_KEYSTORE_PASSWORD NEODROID_REL_KEY_ALIAS NEODROID_KEY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "::error::$var is missing"
+              exit 1
+            fi
+          done
+          printf '%s' "$NEODROID_KEYSTORE_BASE64" | base64 --decode > "$NEODROID_KEYSTORE_FILE"
+          test -s "$NEODROID_KEYSTORE_FILE"
+
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Neodroid ${{ github.ref_name }}
+          files: app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
