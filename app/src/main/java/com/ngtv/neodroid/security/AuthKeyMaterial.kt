@@ -1,7 +1,6 @@
 package com.ngtv.neodroid.security
 
 import com.ngtv.neodroid.database.AuthKeyEntity
-import net.schmizz.sshj.common.Buffer
 import net.schmizz.sshj.userauth.keyprovider.KeyPairWrapper
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider
 import org.bouncycastle.jce.provider.BouncyCastleProvider
@@ -16,24 +15,21 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * Decrypts authentication keys and turns them into sshj key providers
  *
- * Key material only exists in memory while a connection attempt is running
- * The private-key bytes and unwrapped data key are zeroed before returning
+ * Key material only exists in memory while a connection attempt or export is
+ * running. The private-key bytes and unwrapped data key are zeroed before
+ * returning.
  */
 class AuthKeyMaterial(private val keystore: KeystoreKeyManager) {
 
-    fun keyProvider(key: AuthKeyEntity): KeyProvider = keyProvider(
-        algorithm = key.algorithm,
+    fun keyProvider(key: AuthKeyEntity): KeyProvider = KeyPairWrapper(keyPair(key))
+
+    fun keyPair(key: AuthKeyEntity): KeyPair = keyPair(
         publicKey = key.publicKey,
         encryptedPrivateKey = key.encryptedPrivateKey,
         encryptedDek = key.encryptedDek,
     )
 
-    fun keyProvider(
-        algorithm: String,
-        publicKey: String,
-        encryptedPrivateKey: String,
-        encryptedDek: String,
-    ): KeyProvider {
+    fun keyPair(publicKey: String, encryptedPrivateKey: String, encryptedDek: String): KeyPair {
         val dataKey = keystore.unwrap(Base64.decode(encryptedDek))
         var privateKeyBytes: ByteArray? = null
 
@@ -43,25 +39,16 @@ class AuthKeyMaterial(private val keystore: KeystoreKeyManager) {
                 dataKey = dataKey,
             )
 
-            val keyFactoryAlgorithm = when (AuthKeyAlgorithm.fromStorageValue(algorithm)) {
-                AuthKeyAlgorithm.ED25519 -> "Ed25519"
-
-                AuthKeyAlgorithm.RSA_4096 -> "RSA"
-
-                AuthKeyAlgorithm.ECDSA_P256,
-                AuthKeyAlgorithm.ECDSA_P384,
-                AuthKeyAlgorithm.ECDSA_P521,
-                -> "EC"
-
-                null -> error("Unsupported authentication key algorithm: $algorithm")
-            }
-
+            val decodedPublicKey = SshKeyFormat.decodePublicKey(publicKey)
             val privateKey =
                 KeyFactory
-                    .getInstance(keyFactoryAlgorithm, BouncyCastleProvider.PROVIDER_NAME)
+                    .getInstance(
+                        SshKeyFormat.keyFactoryAlgorithm(decodedPublicKey),
+                        BouncyCastleProvider.PROVIDER_NAME,
+                    )
                     .generatePrivate(PKCS8EncodedKeySpec(privateKeyBytes))
 
-            return KeyPairWrapper(KeyPair(decodePublicKey(publicKey), privateKey))
+            return KeyPair(decodedPublicKey, privateKey)
         } finally {
             dataKey.fill(0)
             privateKeyBytes?.fill(0)
@@ -88,26 +75,11 @@ class AuthKeyMaterial(private val keystore: KeystoreKeyManager) {
         return cipher.doFinal(ciphertext)
     }
 
-    private fun decodePublicKey(publicKey: String): java.security.PublicKey {
-        val encoded =
-            publicKey.trim().split(WHITESPACE).let { tokens ->
-                when {
-                    tokens.size >= 2 -> tokens[1]
-                    tokens.size == 1 -> tokens[0]
-                    else -> error("Stored public key is empty")
-                }
-            }
-
-        val blob = Base64.decode(encoded)
-        return Buffer.PlainBuffer(blob).readPublicKey()
-    }
-
     private companion object {
         private const val AES_TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
         private const val GCM_TAG_BYTES = GCM_TAG_BITS / 8
         private const val GCM_IV_BYTES = 12
         private const val ENVELOPE_VERSION: Byte = 1
-        private val WHITESPACE = Regex("\\s+")
     }
 }

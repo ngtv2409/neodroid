@@ -74,8 +74,10 @@ class WorkspaceSession(
     }
 
     suspend fun startNvimConnectToSock(socketPath: String): NvimTool = withContext(Dispatchers.IO) {
+        // reject NUL, so sshd will not truncate the command string. (do they even do that?)
+        require('\u0000' !in socketPath) { "Shell arguments cannot contain NUL bytes" }
         startTool("Neovim socket") { sshSession ->
-            sshSession.exec("exec socat STDIO 'UNIX-CONNECT:$socketPath'")
+            sshSession.exec("exec socat STDIO ${shellQuote("UNIX-CONNECT:$socketPath")}")
         }
     }
 

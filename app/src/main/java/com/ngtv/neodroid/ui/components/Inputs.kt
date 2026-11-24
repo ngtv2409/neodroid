@@ -88,6 +88,7 @@ fun PasswordInput(
     onPasswordChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    label: String = "Password",
 ) {
     var passwordVisible by remember {
         mutableStateOf(false)
@@ -97,7 +98,7 @@ fun PasswordInput(
         value = password,
         onValueChange = onPasswordChange,
         modifier = modifier.fillMaxWidth(),
-        label = { Text("Password") },
+        label = { Text(label) },
         singleLine = true,
         enabled = enabled,
         visualTransformation = if (passwordVisible) {
