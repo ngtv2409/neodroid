@@ -1,7 +1,5 @@
 package com.ngtv.neodroid.security
 
-import net.schmizz.sshj.common.Buffer
-import net.schmizz.sshj.common.KeyType
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.util.encoders.Base64
 import java.security.KeyPair
@@ -26,8 +24,8 @@ enum class AuthKeyAlgorithm(
     ),
     RSA_4096(
         storageValue = "ssh-rsa",
-        displayName = "RSA 4096",
-        description = "Widest compatibility, slower to generate",
+        displayName = "RSA",
+        description = "Widest compatibility, 4096-bit by default, slower to generate",
     ),
     ECDSA_P256(
         storageValue = "ecdsa-sha2-nistp256",
@@ -73,25 +71,25 @@ class AuthKeyGenerator(
     private val secureRandom: SecureRandom = SecureRandom(),
 ) {
 
-    fun generate(algorithm: AuthKeyAlgorithm): GeneratedAuthKey {
-        val keyPair = generateKeyPair(algorithm)
+    fun generate(algorithm: AuthKeyAlgorithm): GeneratedAuthKey =
+        encode(generateKeyPair(algorithm), algorithm)
+
+    /**
+     * Re-wraps an imported key with a fresh DEK protected by this device's Keystore.
+     */
+    fun fromKeyPair(keyPair: KeyPair): GeneratedAuthKey {
+        val algorithm = SshKeyFormat.algorithmFor(keyPair.public)
+            ?: throw IllegalArgumentException(
+                "Unsupported key type: ${keyPair.public.algorithm}",
+            )
+        return encode(keyPair, algorithm)
+    }
+
+    private fun encode(keyPair: KeyPair, algorithm: AuthKeyAlgorithm): GeneratedAuthKey {
         val privateKeyBytes = keyPair.private.encoded
 
         return try {
-            val publicKeyBlob = Buffer.PlainBuffer()
-                .putPublicKey(keyPair.public)
-                .compactData
-            val publicKeyType = KeyType.fromKey(keyPair.public)
-            require(publicKeyType != KeyType.UNKNOWN) {
-                "Unsupported public key type: ${keyPair.public.algorithm}"
-            }
-
-            val publicKey = buildString {
-                append(publicKeyType)
-                append(' ')
-                append(Base64.toBase64String(publicKeyBlob))
-            }
-
+            val publicKey = SshKeyFormat.publicKeyLine(keyPair.public)
             val dataKey = ByteArray(DATA_KEY_BYTES).also(secureRandom::nextBytes)
             try {
                 val encryptedPrivateKey = encrypt(privateKeyBytes, dataKey)

@@ -1,5 +1,6 @@
 package com.ngtv.neodroid.database
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.ColumnInfo
@@ -12,6 +13,13 @@ import androidx.room.Query
 import androidx.room.Update
 import com.ngtv.neodroid.security.AuthKeyAlgorithm
 import com.ngtv.neodroid.security.AuthKeyGenerator
+import com.ngtv.neodroid.security.AuthKeyTransferManager
+import com.ngtv.neodroid.security.ImportCandidate
+import com.ngtv.neodroid.security.ImportInspection
+import com.ngtv.neodroid.security.KeyExportFormat
+import com.ngtv.neodroid.security.KeyExportRequest
+import com.ngtv.neodroid.security.KeyFileFormat
+import com.ngtv.neodroid.security.sshPublicKeyFingerprint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,6 +81,9 @@ interface AuthKeyDao {
     @Insert
     suspend fun insert(key: AuthKeyEntity)
 
+    @Insert
+    suspend fun insertAll(keys: List<AuthKeyEntity>)
+
     @Update
     suspend fun update(key: AuthKeyEntity)
 
@@ -107,6 +119,10 @@ class AuthKeyRepository(private val dao: AuthKeyDao) {
         )
     }
 
+    suspend fun addKeys(keys: List<AuthKeyEntity>) {
+        dao.insertAll(keys.map { it.copy(displayName = it.displayName.trim()) })
+    }
+
     suspend fun deleteKey(key: AuthKeyEntity) {
         dao.delete(key)
     }
@@ -123,6 +139,7 @@ class AuthKeyRepository(private val dao: AuthKeyDao) {
 class AuthKeyViewModel(
     private val repository: AuthKeyRepository,
     private val keyGenerator: AuthKeyGenerator,
+    private val transferManager: AuthKeyTransferManager,
 ) : ViewModel() {
 
     val keys: StateFlow<List<AuthKeyEntity>> =
@@ -141,6 +158,9 @@ class AuthKeyViewModel(
 
     private val _creationState = MutableStateFlow<AuthKeyCreationState>(AuthKeyCreationState.Idle)
     val creationState: StateFlow<AuthKeyCreationState> = _creationState.asStateFlow()
+
+    private val _transferState = MutableStateFlow<KeyTransferState>(KeyTransferState.Idle)
+    val transferState: StateFlow<KeyTransferState> = _transferState.asStateFlow()
 
     fun getKeyById(id: Int): Flow<AuthKeyEntity?> = repository.getById(id)
 
@@ -238,6 +258,122 @@ class AuthKeyViewModel(
         }
     }
 
+    fun inspectImport(uri: Uri, passphrase: CharArray? = null, formatHint: KeyFileFormat? = null) {
+        if (_transferState.value is KeyTransferState.Working) return
+
+        val previous = _transferState.value
+        _transferState.value = KeyTransferState.Working
+        viewModelScope.launch {
+            try {
+                val existingFingerprints = repository
+                    .getAllKeys()
+                    .first()
+                    .mapNotNull { sshPublicKeyFingerprint(it.publicKey) }
+                    .toSet()
+
+                when (val result = transferManager.inspect(uri, passphrase, existingFingerprints)) {
+                    is ImportInspection.NeedsPassphrase -> {
+                        _transferState.value = KeyTransferState.AwaitingPassphrase(
+                            uri = uri,
+                            format = result.format,
+                            error = null,
+                        )
+                    }
+
+                    is ImportInspection.Ready -> {
+                        _transferState.value = KeyTransferState.ImportPreview(result.candidates)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val retryFormat = formatHint
+                    ?: (previous as? KeyTransferState.AwaitingPassphrase)?.format
+                _transferState.value = if (retryFormat != null) {
+                    KeyTransferState.AwaitingPassphrase(
+                        uri = uri,
+                        format = retryFormat,
+                        error = e.message ?: "Could not read the key file",
+                    )
+                } else {
+                    KeyTransferState.Failed(e.message ?: "Could not read the key file")
+                }
+            } finally {
+                passphrase?.fill('\u0000')
+            }
+        }
+    }
+
+    fun importCandidates(candidates: List<ImportCandidate>) {
+        if (candidates.isEmpty()) {
+            _transferState.value = KeyTransferState.Failed("Select at least one key")
+            return
+        }
+        if (_transferState.value is KeyTransferState.Working) return
+
+        _transferState.value = KeyTransferState.Working
+        viewModelScope.launch {
+            try {
+                val generated = withContext(Dispatchers.Default) {
+                    candidates.map { candidate ->
+                        candidate.displayName to keyGenerator.fromKeyPair(candidate.keyPair)
+                    }
+                }
+
+                repository.addKeys(
+                    generated.map { (displayName, key) ->
+                        AuthKeyEntity(
+                            algorithm = key.algorithm.storageValue,
+                            displayName = displayName,
+                            encryptedPrivateKey = key.encryptedPrivateKey,
+                            publicKey = key.publicKey,
+                            encryptedDek = key.encryptedDek,
+                        )
+                    },
+                )
+
+                val count = generated.size
+                _transferState.value = KeyTransferState.Finished(
+                    "Imported $count key${if (count == 1) "" else "s"}",
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _transferState.value = KeyTransferState.Failed(
+                    e.message ?: "Could not import the keys",
+                )
+            }
+        }
+    }
+
+    fun export(request: KeyExportRequest, uri: Uri) {
+        if (_transferState.value is KeyTransferState.Working) return
+
+        _transferState.value = KeyTransferState.Working
+        viewModelScope.launch {
+            try {
+                transferManager.export(request, uri)
+                val message = when (request.format) {
+                    KeyExportFormat.OPENSSH -> "Exported private key"
+
+                    KeyExportFormat.BUNDLE ->
+                        "Exported ${request.keys.size} key${if (request.keys.size == 1) "" else "s"}"
+                }
+                _transferState.value = KeyTransferState.Finished(message)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _transferState.value = KeyTransferState.Failed(
+                    e.message ?: "Could not export the key",
+                )
+            }
+        }
+    }
+
+    fun clearTransferState() {
+        _transferState.value = KeyTransferState.Idle
+    }
+
     private fun validate(
         algorithm: String,
         encryptedPrivateKey: String,
@@ -259,4 +395,19 @@ sealed interface AuthKeyCreationState {
     data object Created : AuthKeyCreationState
 
     data class Failed(val message: String) : AuthKeyCreationState
+}
+
+sealed interface KeyTransferState {
+    data object Idle : KeyTransferState
+
+    data object Working : KeyTransferState
+
+    data class AwaitingPassphrase(val uri: Uri, val format: KeyFileFormat, val error: String?) :
+        KeyTransferState
+
+    data class ImportPreview(val candidates: List<ImportCandidate>) : KeyTransferState
+
+    data class Finished(val message: String) : KeyTransferState
+
+    data class Failed(val message: String) : KeyTransferState
 }

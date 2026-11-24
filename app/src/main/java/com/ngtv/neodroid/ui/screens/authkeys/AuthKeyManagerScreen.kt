@@ -3,7 +3,10 @@
 package com.ngtv.neodroid.ui.screens.authkeys
 
 import android.content.ClipData
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,14 +22,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,7 +60,10 @@ import com.ngtv.neodroid.R
 import com.ngtv.neodroid.database.AuthKeyCreationState
 import com.ngtv.neodroid.database.AuthKeyEntity
 import com.ngtv.neodroid.database.AuthKeyViewModel
+import com.ngtv.neodroid.database.KeyTransferState
 import com.ngtv.neodroid.security.AuthKeyAlgorithm
+import com.ngtv.neodroid.security.KeyExportFormat
+import com.ngtv.neodroid.security.KeyExportRequest
 import com.ngtv.neodroid.security.sshPublicKeyFingerprint
 import com.ngtv.neodroid.ui.components.ActionMenuItem
 import com.ngtv.neodroid.ui.components.CompactListItem
@@ -69,117 +79,211 @@ import com.ngtv.neodroid.ui.components.ValidatedTextField
 import com.ngtv.neodroid.ui.theme.Spacing
 import com.ngtv.neodroid.ui.util.relativeTime
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
     val keys by viewModel.recentKeys.collectAsStateWithLifecycle()
+    val transferState by viewModel.transferState.collectAsStateWithLifecycle()
 
     var selectedKeyId by rememberSaveable { mutableStateOf<Int?>(null) }
     var isCreating by rememberSaveable { mutableStateOf(false) }
     var keyPendingDeletion by remember { mutableStateOf<AuthKeyEntity?>(null) }
+    var selectionMode by rememberSaveable { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var exportDialogKeys by remember { mutableStateOf<List<AuthKeyEntity>?>(null) }
+    var pendingExport by remember { mutableStateOf<KeyExportRequest?>(null) }
 
     val selectedKey = keys.firstOrNull { it.id == selectedKeyId }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            viewModel.inspectImport(uri)
+        }
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(EXPORT_MIME_TYPE),
+    ) { uri ->
+        val request = pendingExport
+        pendingExport = null
+        if (uri != null && request != null) {
+            viewModel.export(request, uri)
+        }
+    }
+
+    LaunchedEffect(keys) {
+        val validIds = keys.map { it.id }.toSet()
+        if (selectedIds.any { it !in validIds }) {
+            selectedIds = selectedIds.intersect(validIds)
+        }
+    }
+
+    LaunchedEffect(transferState) {
+        when (val state = transferState) {
+            is KeyTransferState.Finished -> {
+                snackbarHostState.showSnackbar(state.message)
+                viewModel.clearTransferState()
+            }
+
+            is KeyTransferState.Failed -> {
+                snackbarHostState.showSnackbar(state.message)
+                viewModel.clearTransferState()
+            }
+
+            else -> Unit
+        }
+    }
 
     val openCreate = {
         viewModel.resetCreationState()
         isCreating = true
         selectedKeyId = null
+        selectionMode = false
+        selectedIds = emptySet()
     }
 
-    SplitPaneLayout(
-        listPane = {
-            AuthKeyTopBar(
-                title = "Auth keys",
-                onBack = onBack,
-                onAdd = openCreate,
-            )
-            AuthKeyList(
-                keys = keys,
-                selectedKeyId = selectedKeyId,
-                onKeyClick = {
-                    isCreating = false
-                    selectedKeyId = it
-                },
-                onDelete = { keyPendingDeletion = it },
-                modifier = Modifier.fillMaxSize(),
-            )
-        },
-        detailPane = {
-            when {
-                isCreating -> {
-                    CreateAuthKeyScreen(
-                        viewModel = viewModel,
-                        onBack = { isCreating = false },
-                        onCreated = { isCreating = false },
-                    )
-                }
+    val cancelSelection = {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
 
-                selectedKey != null -> {
-                    AuthKeyDetailScreen(
-                        key = selectedKey,
-                        onBack = { selectedKeyId = null },
-                        onRename = { displayName ->
-                            viewModel.updateKey(
-                                selectedKey.copy(displayName = displayName),
-                            )
-                        },
-                    )
-                }
-
-                else -> {
-                    EmptyState(
-                        title = "Select a key",
-                        message = "Choose an authentication key from the list to view its details.",
-                    )
-                }
+    val selectKey = { key: AuthKeyEntity ->
+        if (selectionMode) {
+            selectedIds = if (key.id in selectedIds) {
+                selectedIds - key.id
+            } else {
+                selectedIds + key.id
             }
-        },
-        compactContent = {
-            when {
-                isCreating -> {
-                    CreateAuthKeyScreen(
-                        viewModel = viewModel,
-                        onBack = { isCreating = false },
-                        onCreated = { isCreating = false },
-                    )
-                }
+        } else {
+            isCreating = false
+            selectedKeyId = key.id
+        }
+    }
 
-                selectedKey != null -> {
-                    AuthKeyDetailScreen(
-                        key = selectedKey,
-                        onBack = { selectedKeyId = null },
-                        onRename = { displayName ->
-                            viewModel.updateKey(
-                                selectedKey.copy(displayName = displayName),
-                            )
-                        },
-                    )
-                }
+    val topBarContent: @Composable () -> Unit = {
+        AuthKeysTopBar(
+            selectionMode = selectionMode,
+            selectionCount = selectedIds.size,
+            onBack = onBack,
+            onAdd = openCreate,
+            onImport = { importLauncher.launch(arrayOf("*/*")) },
+            onSelect = {
+                selectionMode = true
+                selectedIds = emptySet()
+                isCreating = false
+                selectedKeyId = null
+            },
+            onCancelSelection = cancelSelection,
+            onExportSelected = {
+                val selected = keys.filter { it.id in selectedIds }
+                if (selected.isNotEmpty()) exportDialogKeys = selected
+            },
+        )
+    }
 
-                else -> {
-                    Scaffold(
-                        topBar = {
-                            AuthKeyTopBar(
-                                title = "Auth keys",
-                                onBack = onBack,
-                                onAdd = openCreate,
-                            )
-                        },
-                    ) { innerPadding ->
-                        AuthKeyList(
-                            keys = keys,
-                            selectedKeyId = null,
-                            onKeyClick = { selectedKeyId = it },
-                            onDelete = { keyPendingDeletion = it },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding),
+    Box(modifier = Modifier.fillMaxSize()) {
+        SplitPaneLayout(
+            listPane = {
+                topBarContent()
+                AuthKeyList(
+                    keys = keys,
+                    selectedKeyId = selectedKeyId,
+                    selectionMode = selectionMode,
+                    selectedIds = selectedIds,
+                    onKeyClick = selectKey,
+                    onDelete = { keyPendingDeletion = it },
+                    onExport = { exportDialogKeys = listOf(it) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+            detailPane = {
+                when {
+                    isCreating -> {
+                        CreateAuthKeyScreen(
+                            viewModel = viewModel,
+                            onBack = { isCreating = false },
+                            onCreated = { isCreating = false },
+                        )
+                    }
+
+                    selectedKey != null -> {
+                        AuthKeyDetailScreen(
+                            key = selectedKey,
+                            onBack = { selectedKeyId = null },
+                            onRename = { displayName ->
+                                viewModel.updateKey(
+                                    selectedKey.copy(displayName = displayName),
+                                )
+                            },
+                            onExport = { exportDialogKeys = listOf(selectedKey) },
+                        )
+                    }
+
+                    else -> {
+                        EmptyState(
+                            title = "Select a key",
+                            message = "Choose an authentication key from the list to " +
+                                "view its details.",
                         )
                     }
                 }
-            }
-        },
-    )
+            },
+            compactContent = {
+                when {
+                    isCreating -> {
+                        CreateAuthKeyScreen(
+                            viewModel = viewModel,
+                            onBack = { isCreating = false },
+                            onCreated = { isCreating = false },
+                        )
+                    }
+
+                    selectedKey != null -> {
+                        AuthKeyDetailScreen(
+                            key = selectedKey,
+                            onBack = { selectedKeyId = null },
+                            onRename = { displayName ->
+                                viewModel.updateKey(
+                                    selectedKey.copy(displayName = displayName),
+                                )
+                            },
+                            onExport = { exportDialogKeys = listOf(selectedKey) },
+                        )
+                    }
+
+                    else -> {
+                        Scaffold(
+                            topBar = { topBarContent() },
+                        ) { innerPadding ->
+                            AuthKeyList(
+                                keys = keys,
+                                selectedKeyId = null,
+                                selectionMode = selectionMode,
+                                selectedIds = selectedIds,
+                                onKeyClick = selectKey,
+                                onDelete = { keyPendingDeletion = it },
+                                onExport = { exportDialogKeys = listOf(it) },
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(innerPadding),
+                            )
+                        }
+                    }
+                }
+            },
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
 
     keyPendingDeletion?.let { key ->
         ConfirmDeleteDialog(
@@ -195,6 +299,92 @@ fun AuthKeyManagerScreen(viewModel: AuthKeyViewModel, onBack: () -> Unit) {
             },
         )
     }
+
+    exportDialogKeys?.let { keysToExport ->
+        ExportKeysDialog(
+            keys = keysToExport,
+            onDismiss = { exportDialogKeys = null },
+            onConfirm = { format, passphrase ->
+                val request = KeyExportRequest(
+                    keys = keysToExport,
+                    format = format,
+                    passphrase = passphrase,
+                )
+                pendingExport = request
+                exportDialogKeys = null
+                exportLauncher.launch(suggestedExportName(keysToExport, format))
+            },
+        )
+    }
+
+    when (val state = transferState) {
+        is KeyTransferState.AwaitingPassphrase -> {
+            ImportPassphraseDialog(
+                format = state.format,
+                error = state.error,
+                onDismiss = { viewModel.clearTransferState() },
+                onSubmit = { passphrase ->
+                    viewModel.inspectImport(
+                        uri = state.uri,
+                        passphrase = passphrase.toCharArray(),
+                        formatHint = state.format,
+                    )
+                },
+            )
+        }
+
+        is KeyTransferState.ImportPreview -> {
+            ImportPreviewDialog(
+                candidates = state.candidates,
+                onDismiss = { viewModel.clearTransferState() },
+                onConfirm = { selected -> viewModel.importCandidates(selected) },
+            )
+        }
+
+        is KeyTransferState.Working -> {
+            TransferProgressDialog(message = "Working")
+        }
+
+        else -> Unit
+    }
+}
+
+@Composable
+private fun AuthKeysTopBar(
+    selectionMode: Boolean,
+    selectionCount: Int,
+    onBack: () -> Unit,
+    onAdd: () -> Unit,
+    onImport: () -> Unit,
+    onSelect: () -> Unit,
+    onCancelSelection: () -> Unit,
+    onExportSelected: () -> Unit,
+) {
+    if (selectionMode) {
+        NeodroidTopBar(
+            title = "$selectionCount selected",
+            onBack = onCancelSelection,
+            actions = {
+                TextButton(onClick = onCancelSelection) {
+                    Text("Cancel")
+                }
+                TextButton(
+                    onClick = onExportSelected,
+                    enabled = selectionCount > 0,
+                ) {
+                    Text("Export")
+                }
+            },
+        )
+    } else {
+        AuthKeyTopBar(
+            title = "Auth keys",
+            onBack = onBack,
+            onAdd = onAdd,
+            onImport = onImport,
+            onSelect = onSelect,
+        )
+    }
 }
 
 @Composable
@@ -203,6 +393,8 @@ private fun AuthKeyTopBar(
     onBack: () -> Unit,
     onAdd: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
+    onImport: (() -> Unit)? = null,
+    onSelect: (() -> Unit)? = null,
 ) {
     NeodroidTopBar(
         title = title,
@@ -219,6 +411,32 @@ private fun AuthKeyTopBar(
                     ),
                 ) {
                     Text("Edit")
+                }
+            }
+            if (onSelect != null) {
+                TextButton(
+                    onClick = onSelect,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Select auth keys"
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
+                    Text("Select")
+                }
+            }
+            if (onImport != null) {
+                IconButton(
+                    onClick = onImport,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Import auth key"
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_file_download),
+                        contentDescription = null,
+                    )
                 }
             }
             if (onAdd != null) {
@@ -242,8 +460,11 @@ private fun AuthKeyTopBar(
 private fun AuthKeyList(
     keys: List<AuthKeyEntity>,
     selectedKeyId: Int?,
-    onKeyClick: (Int) -> Unit,
+    selectionMode: Boolean,
+    selectedIds: Set<Int>,
+    onKeyClick: (AuthKeyEntity) -> Unit,
     onDelete: (AuthKeyEntity) -> Unit,
+    onExport: (AuthKeyEntity) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier) {
@@ -265,9 +486,16 @@ private fun AuthKeyList(
             ) { index, key ->
                 AuthKeyRow(
                     key = key,
-                    selected = key.id == selectedKeyId,
-                    onClick = { onKeyClick(key.id) },
+                    selected = if (selectionMode) {
+                        key.id in selectedIds
+                    } else {
+                        key.id == selectedKeyId
+                    },
+                    selectionMode = selectionMode,
+                    selectedForExport = key.id in selectedIds,
+                    onClick = { onKeyClick(key) },
                     onDelete = { onDelete(key) },
+                    onExport = { onExport(key) },
                 )
                 if (index < keys.lastIndex) {
                     HorizontalDivider(modifier = Modifier.padding(horizontal = Spacing.md))
@@ -281,8 +509,11 @@ private fun AuthKeyList(
 private fun AuthKeyRow(
     key: AuthKeyEntity,
     selected: Boolean,
+    selectionMode: Boolean,
+    selectedForExport: Boolean,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onExport: () -> Unit,
 ) {
     val fingerprint = remember(key.publicKey) {
         sshPublicKeyFingerprint(key.publicKey)
@@ -326,20 +557,42 @@ private fun AuthKeyRow(
                 }
             }
         },
-        trailingContent = {
-            Icon(
-                painter = painterResource(R.drawable.ic_chevron_right),
-                contentDescription = null,
-                tint = LocalContentColor.current.copy(alpha = 0.7f),
+        leadingContent = if (selectionMode) {
+            {
+                Checkbox(
+                    checked = selectedForExport,
+                    onCheckedChange = null,
+                )
+            }
+        } else {
+            null
+        },
+        trailingContent = if (selectionMode) {
+            null
+        } else {
+            {
+                Icon(
+                    painter = painterResource(R.drawable.ic_chevron_right),
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.7f),
+                )
+            }
+        },
+        menuActions = if (selectionMode) {
+            emptyList()
+        } else {
+            listOf(
+                ActionMenuItem(
+                    label = "Export key",
+                    onClick = onExport,
+                ),
+                ActionMenuItem(
+                    label = "Delete key",
+                    destructive = true,
+                    onClick = onDelete,
+                ),
             )
         },
-        menuActions = listOf(
-            ActionMenuItem(
-                label = "Delete key",
-                destructive = true,
-                onClick = onDelete,
-            ),
-        ),
         onClick = onClick,
         selected = selected,
     )
@@ -457,6 +710,7 @@ private fun AuthKeyDetailScreen(
     key: AuthKeyEntity,
     onBack: () -> Unit,
     onRename: (String) -> Unit,
+    onExport: () -> Unit,
 ) {
     val fingerprint = remember(key.publicKey) {
         sshPublicKeyFingerprint(key.publicKey)
@@ -562,10 +816,24 @@ private fun AuthKeyDetailScreen(
                 )
             }
 
+            OutlinedButton(
+                onClick = onExport,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.lg),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_file_upload),
+                    contentDescription = null,
+                )
+                Spacer(modifier = Modifier.width(Spacing.xxs))
+                Text("Export private key…")
+            }
+
             Text(
-                text = "Private key material is stored encrypted on this device " +
-                    "and is never displayed.",
-                modifier = Modifier.padding(top = Spacing.lg),
+                text = "Private key material is stored encrypted on this device. " +
+                    "Exports are protected by the passphrase you choose.",
+                modifier = Modifier.padding(top = Spacing.md),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -626,3 +894,25 @@ private fun authKeyUsageTime(key: AuthKeyEntity): String {
 
     return "Used ${relativeTime(timestamp)}"
 }
+
+private fun suggestedExportName(keys: List<AuthKeyEntity>, format: KeyExportFormat): String {
+    if (format == KeyExportFormat.BUNDLE || keys.size > 1) {
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+        return "neodroid-keys-$stamp.ndkeys"
+    }
+
+    return when (AuthKeyAlgorithm.fromStorageValue(keys.single().algorithm)) {
+        AuthKeyAlgorithm.ED25519 -> "id_ed25519"
+
+        AuthKeyAlgorithm.RSA_4096 -> "id_rsa"
+
+        AuthKeyAlgorithm.ECDSA_P256,
+        AuthKeyAlgorithm.ECDSA_P384,
+        AuthKeyAlgorithm.ECDSA_P521,
+        -> "id_ecdsa"
+
+        null -> "id_key"
+    }
+}
+
+private const val EXPORT_MIME_TYPE = "application/octet-stream"
