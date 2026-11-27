@@ -184,10 +184,41 @@ object Settings {
         title = "Saved hosts",
         description = "Show all saved hosts on the home screen.",
     )
+
+    val keepScreenOn = Setting.Toggle(
+        key = booleanPreferencesKey("general.keep_screen_on"),
+        defaultValue = true,
+        title = "Keep screen on",
+        description = "Prevent the phone to close when idle.",
+    )
 }
 
 object SettingsCatalog {
     val categories: List<SettingsCategory> = listOf(
+        SettingsCategory(
+            id = "general",
+            title = "General",
+            summary = "Manage general things.",
+            sections = listOf(
+                SettingsSection(
+                    title = "General",
+                    entries = listOf(
+                        Settings.keepScreenOn,
+                    ),
+                ),
+                SettingsSection(
+                    title = "Settings",
+                    entries = listOf(
+                        ActionSetting(
+                            id = "reset_settings",
+                            title = "Reset all settings",
+                            description = "Restore every app setting to its default value.",
+                            action = SettingsAction.ResetSettings,
+                        ),
+                    ),
+                ),
+            ),
+        ),
         SettingsCategory(
             id = "appearance",
             title = "Appearance",
@@ -241,24 +272,6 @@ object SettingsCatalog {
                         Settings.showHomeOnline,
                         Settings.showHomeRecent,
                         Settings.showHomeHosts,
-                    ),
-                ),
-            ),
-        ),
-        SettingsCategory(
-            id = "general",
-            title = "General",
-            summary = "Manage stored app settings.",
-            sections = listOf(
-                SettingsSection(
-                    title = "Settings",
-                    entries = listOf(
-                        ActionSetting(
-                            id = "reset_settings",
-                            title = "Reset all settings",
-                            description = "Restore every app setting to its default value.",
-                            action = SettingsAction.ResetSettings,
-                        ),
                     ),
                 ),
             ),

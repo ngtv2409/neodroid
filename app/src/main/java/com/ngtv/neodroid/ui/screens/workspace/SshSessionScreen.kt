@@ -1,6 +1,8 @@
 package com.ngtv.neodroid.ui.screens.workspace
 
+import android.app.Activity
 import android.content.ClipboardManager
+import android.view.WindowManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +28,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +62,32 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val settings = rememberSettingsRepository()
+    val keepScreenOn by settings
+        .getAsFlow(Settings.keepScreenOn)
+        .collectAsStateWithLifecycle(initialValue = Settings.keepScreenOn.defaultValue)
+
+    val activity = context as Activity
+
+    DisposableEffect(activity, keepScreenOn) {
+        if (keepScreenOn) {
+            activity.window.addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            )
+        } else {
+            activity.window.clearFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            )
+        }
+
+        onDispose {
+            activity.window.clearFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            )
+        }
+    }
+
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -75,7 +104,6 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     val currentTool = session.tools.getOrNull(selectedIndex)
     val extraKeysState = rememberExtraKeysState()
 
-    val settings = rememberSettingsRepository()
     val editorFontKey by settings.getAsFlow(Settings.editorFontFamily)
         .collectAsStateWithLifecycle(
             initialValue = Settings.editorFontFamily.defaultValue,
@@ -94,7 +122,6 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
     val editorFontSizeSp = editorFontSize.sp
     val editorLineHeightSp = (editorFontSize * editorLineHeight / 100f).sp
 
-    val context = LocalContext.current
     val inputView = remember(context) { NvimInputView(context) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
