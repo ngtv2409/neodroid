@@ -70,7 +70,9 @@ It is in its early stage and has no config yet.
 
 After you have installed the plugin, do:
 ```lua
-require("neodroid").setup()
+if vim.g.neodroid == 1 then
+  require("neodroid").setup()
+end
 ```
 
 Clipboard requires **Settings - Integration - Clipboard - Allow remote clipboard** in the app.
