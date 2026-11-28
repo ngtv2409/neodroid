@@ -245,9 +245,20 @@ fun NvimEditor(
                 Text("Waiting for Neovim UI...")
             }
         } else {
+            // nvim grid can be too big and extend beyond visible screen,
+            // so if when is lowering, compose size change quickly and may reveal stale content
+            // clamp them
+            val screenRows = layers
+                .firstOrNull { it.grid == GLOBAL_GRID && it.rows.isNotEmpty() }
+                ?.height
+                ?.takeIf { it > 0 }
+                ?: layers.maxOfOrNull { it.startRow + it.height }
+                    ?.takeIf { it > 0 }
+                ?: visibleRows
             val renderedLayers = remember(
                 frame,
                 layers,
+                screenRows,
                 visibleRows,
                 renderCache,
                 textMeasurer,
@@ -255,10 +266,14 @@ fun NvimEditor(
             ) {
                 NvimPerf.measure("render.compose") {
                     layers.map { layer ->
+                        val maxRows = minOf(
+                            visibleRows,
+                            (screenRows - layer.startRow).coerceAtLeast(0),
+                        )
                         layer to renderCache.render(
                             frame = frame,
                             sourceRows = layer.rows,
-                            maxRows = visibleRows,
+                            maxRows = maxRows,
                             textMeasurer = textMeasurer,
                             baseStyle = baseTextStyle,
                         )
@@ -525,6 +540,7 @@ private fun NvimLayerView(
             )
             .width(cellWidth * layer.width.toFloat())
             .height(cellHeight * rows.size.toFloat())
+            .background(frame.defaultColors.background)
             .clipToBounds(),
     ) {
         NvimGrid(
@@ -1147,6 +1163,7 @@ internal class NvimInputView(context: Context) : View(context) {
     }
 }
 
+private const val GLOBAL_GRID = 1L
 private val RESIZE_DEBOUNCE_MS: Duration = 100.milliseconds
 private val TEXT_BLINK_INTERVAL_MS: Duration = 500.milliseconds
 
