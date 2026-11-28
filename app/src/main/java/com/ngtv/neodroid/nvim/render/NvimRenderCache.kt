@@ -167,7 +167,10 @@ internal class NvimRenderCache {
     private fun evictRows(frame: NvimFrame) {
         val liveRows = HashSet<TextRow>()
         liveRows.addAll(frame.rows)
-        frame.layers.forEach { liveRows.addAll(it.rows) }
+        frame.layers.forEach { layer ->
+            liveRows.addAll(layer.rows)
+            liveRows.addAll(layer.scrollRows)
+        }
         val limit = liveRows.size * 2 + 64
         if (rows.size <= limit) return
         rows.keys.retainAll(liveRows)

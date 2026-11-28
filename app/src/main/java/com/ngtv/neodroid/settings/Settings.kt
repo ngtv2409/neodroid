@@ -155,6 +155,22 @@ object Settings {
         suffix = "%",
     )
 
+    val editorSmoothScroll = Setting.Toggle(
+        key = booleanPreferencesKey("editor.smooth_scroll"),
+        defaultValue = true,
+        title = "Smooth scrolling",
+        description = "Animate scrolling instead of jumping line by line.",
+    )
+
+    val editorScrollAnimationLength = Setting.Number(
+        key = intPreferencesKey("editor.scroll_animation_length"),
+        defaultValue = 300,
+        title = "Scroll animation length",
+        description = "How long a smooth scroll animation takes to settle.",
+        range = 50..1000,
+        suffix = " ms",
+    )
+
     val allowRemoteClipboard = Setting.Toggle(
         key = booleanPreferencesKey("integration.remote_clipboard"),
         defaultValue = false,
@@ -236,7 +252,7 @@ object SettingsCatalog {
         SettingsCategory(
             id = "editor",
             title = "Editor",
-            summary = "Fonts and sizing for the Neovim editor.",
+            summary = "Fonts, sizing, and scrolling for the Neovim editor.",
             sections = listOf(
                 SettingsSection(
                     title = "Font",
@@ -244,6 +260,13 @@ object SettingsCatalog {
                         Settings.editorFontFamily,
                         Settings.editorFontSize,
                         Settings.editorLineHeight,
+                    ),
+                ),
+                SettingsSection(
+                    title = "Scrolling",
+                    entries = listOf(
+                        Settings.editorSmoothScroll,
+                        Settings.editorScrollAnimationLength,
                     ),
                 ),
             ),

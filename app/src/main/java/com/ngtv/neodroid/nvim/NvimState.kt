@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.text.BreakIterator
 import java.util.ArrayList
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 data class CursorState(val row: Int = 0, val col: Int = 0)
@@ -63,6 +64,15 @@ data class NvimGridLayer(
     val cursor: CursorState? = null,
     val margins: NvimViewportMargins = NvimViewportMargins(),
     val mouseEnabled: Boolean = true,
+    /**
+     * Row buffer used for smooth scrolling.
+     */
+    val scrollRows: List<TextRow> = emptyList(),
+    val scrollOrigin: Int = 0,
+    val scrollMargin: Int = 0,
+    val scrollDelta: Int = 0,
+    val scrollGeneration: Long = 0,
+    val scrollTotal: Long = 0,
 ) {
     val height: Int
         get() = rows.size
@@ -538,6 +548,7 @@ class NvimStateActor {
     val state = _state.asStateFlow()
 
     private fun publish(): NvimFrame {
+        grids.values.forEach(::prepareScrollBuffer)
         val layers = buildLayers()
         val primary = pickPrimaryLayer(layers)
         val activeCursor = activeGrid?.let { grids[it]?.cursor }
@@ -619,12 +630,95 @@ class NvimStateActor {
                     cursor = grid.cursor.takeIf { activeGrid == grid.id },
                     margins = grid.margins,
                     mouseEnabled = grid.mouseEnabled,
+                    scrollRows = grid.scrollRows.toList(),
+                    scrollOrigin = grid.scrollOrigin,
+                    scrollMargin = grid.scrollMargin,
+                    scrollDelta = grid.lastScrollDelta,
+                    scrollGeneration = grid.scrollGeneration,
+                    scrollTotal = grid.scrollTotal,
                 ),
             )
         }
 
         layerList.sortBy { it.zOrder }
         return layerList
+    }
+
+    /**
+     * Keeps a three-screen row buffer around the viewport. When Neovim reports
+     * a scroll we shift the viewport in the buffer so the rows that just left
+     * the screen remain while the renderer animates
+     */
+    private fun prepareScrollBuffer(grid: GridState) {
+        val height = grid.rows.size
+        if (height <= 0 || grid.width <= 0) {
+            grid.scrollRows = ArrayList()
+            grid.scrollOrigin = 0
+            grid.scrollMargin = 0
+            grid.lastScrollDelta = 0
+            grid.pendingViewportScroll = 0
+            grid.pendingGridScroll = 0
+            return
+        }
+
+        val margin = height
+        val length = height + 2 * margin
+
+        if (grid.scrollRows.size != length || grid.scrollMargin != margin) {
+            val blank = TextRow.blank(grid.width)
+            val buffer = ArrayList<TextRow>(length)
+            repeat(length) { buffer.add(blank) }
+            for (index in 0 until height) {
+                buffer[margin + index] = grid.rows[index]
+            }
+            grid.scrollRows = buffer
+            grid.scrollOrigin = margin
+            grid.scrollMargin = margin
+            grid.pendingViewportScroll = 0
+            grid.pendingGridScroll = 0
+            grid.lastScrollDelta = 0
+            grid.scrollGeneration += 1
+            return
+        }
+
+        val rawDelta = if (grid.pendingViewportScroll != 0) {
+            grid.pendingViewportScroll
+        } else {
+            grid.pendingGridScroll
+        }
+        grid.pendingViewportScroll = 0
+        grid.pendingGridScroll = 0
+
+        val delta = rawDelta.coerceIn(-margin, margin)
+        if (delta != 0) {
+            shiftScrollBuffer(grid, delta)
+            grid.scrollTotal += delta
+            grid.scrollGeneration += 1
+            grid.lastScrollDelta = delta
+        } else {
+            grid.lastScrollDelta = 0
+        }
+
+        val buffer = grid.scrollRows
+        val origin = grid.scrollOrigin
+        for (index in 0 until height) {
+            buffer[origin + index] = grid.rows[index]
+        }
+    }
+
+    private fun shiftScrollBuffer(grid: GridState, delta: Int) {
+        val buffer = grid.scrollRows
+        val count = abs(delta.coerceIn(-grid.scrollMargin, grid.scrollMargin))
+        if (count == 0) return
+
+        val blank = TextRow.blank(grid.width)
+        if (delta > 0) {
+            buffer.subList(0, count).clear()
+            repeat(count) { buffer.add(blank) }
+        } else {
+            buffer.addAll(0, List(count) { blank })
+            buffer.subList(buffer.size - count, buffer.size).clear()
+        }
     }
 
     private fun floatingPosition(grid: GridState): Pair<Int, Int> {
@@ -831,6 +925,7 @@ class NvimStateActor {
 
             is NvimUiEvent.WinViewport -> {
                 val grid = grids[event.grid] ?: return
+                grid.pendingViewportScroll = event.scrollDelta?.toInt() ?: 0
                 grid.viewport = NvimViewport(
                     topLine = event.topLine.toInt(),
                     bottomLine = event.bottomLine.toInt(),
@@ -950,6 +1045,8 @@ class NvimStateActor {
         val right = event.right.toInt().coerceIn(left, width)
         if (left >= right) return
 
+        grid.pendingGridScroll += rowDelta
+
         if (left == 0 && right == width) {
             scrollFullWidth(rows, top, bot, rowDelta, width)
         } else {
@@ -1043,6 +1140,14 @@ private class GridState(val id: Long) {
     var mouseEnabled: Boolean = true
     var margins: NvimViewportMargins = NvimViewportMargins()
     var viewport: NvimViewport? = null
+    var scrollRows: ArrayList<TextRow> = ArrayList()
+    var scrollOrigin: Int = 0
+    var scrollMargin: Int = 0
+    var scrollGeneration: Long = 0L
+    var scrollTotal: Long = 0L
+    var lastScrollDelta: Int = 0
+    var pendingViewportScroll: Int = 0
+    var pendingGridScroll: Int = 0
 }
 
 private const val GLOBAL_GRID = 1L

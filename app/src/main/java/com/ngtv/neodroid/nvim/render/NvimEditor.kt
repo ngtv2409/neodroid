@@ -11,6 +11,9 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -26,8 +29,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -78,6 +84,7 @@ import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.sin
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -96,6 +103,8 @@ fun NvimEditor(
     fontFamily: FontFamily,
     fontSize: TextUnit,
     lineHeight: TextUnit,
+    smoothScroll: Boolean = true,
+    scrollAnimationLengthMs: Int = 300,
     modifier: Modifier = Modifier,
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -255,31 +264,6 @@ fun NvimEditor(
                 ?: layers.maxOfOrNull { it.startRow + it.height }
                     ?.takeIf { it > 0 }
                 ?: visibleRows
-            val renderedLayers = remember(
-                frame,
-                layers,
-                screenRows,
-                visibleRows,
-                renderCache,
-                textMeasurer,
-                baseTextStyle,
-            ) {
-                NvimPerf.measure("render.compose") {
-                    layers.map { layer ->
-                        val maxRows = minOf(
-                            visibleRows,
-                            (screenRows - layer.startRow).coerceAtLeast(0),
-                        )
-                        layer to renderCache.render(
-                            frame = frame,
-                            sourceRows = layer.rows,
-                            maxRows = maxRows,
-                            textMeasurer = textMeasurer,
-                            baseStyle = baseTextStyle,
-                        )
-                    }
-                }
-            }
             val blinkVisible = rememberTextBlinkVisible(frame)
             val uriHandler = LocalUriHandler.current
             val primaryLayer = frame.primaryLayer
@@ -290,17 +274,21 @@ fun NvimEditor(
                     .height(cellHeight * visibleRows.toFloat())
                     .clipToBounds(),
             ) {
-                renderedLayers.forEach { (layer, renderedRows) ->
+                layers.forEach { layer ->
                     key(layer.grid) {
                         NvimLayerView(
                             layer = layer,
-                            rows = renderedRows,
                             frame = frame,
+                            visibleRows = visibleRows,
+                            screenRows = screenRows,
+                            renderCache = renderCache,
                             cellWidth = cellWidth,
                             cellHeight = cellHeight,
                             blinkVisible = blinkVisible,
                             textMeasurer = textMeasurer,
                             baseTextStyle = baseTextStyle,
+                            smoothScroll = smoothScroll,
+                            scrollAnimationLengthMs = scrollAnimationLengthMs,
                         )
                     }
                 }
@@ -522,16 +510,68 @@ private fun NvimGridMenu(
 @Composable
 private fun NvimLayerView(
     layer: NvimGridLayer,
-    rows: List<RenderedRow>,
     frame: NvimFrame,
+    visibleRows: Int,
+    screenRows: Int,
+    renderCache: NvimRenderCache,
     cellWidth: Dp,
     cellHeight: Dp,
     blinkVisible: Boolean,
     textMeasurer: TextMeasurer,
     baseTextStyle: TextStyle,
+    smoothScroll: Boolean,
+    scrollAnimationLengthMs: Int,
 ) {
-    if (rows.isEmpty() || layer.width <= 0) return
+    if (layer.rows.isEmpty() || layer.width <= 0) return
 
+    val scrollPosition = rememberSmoothScroll(
+        layer = layer,
+        enabled = smoothScroll && layer.margins.top == 0 && layer.margins.bottom == 0,
+        animationLengthMs = scrollAnimationLengthMs,
+    )
+    val scrollBase by remember(scrollPosition) {
+        derivedStateOf { floor(scrollPosition.value).toInt() }
+    }
+    val cellHeightPx = with(LocalDensity.current) { cellHeight.toPx() }
+
+    val rows = remember(
+        frame,
+        layer,
+        scrollBase,
+        visibleRows,
+        screenRows,
+        renderCache,
+        textMeasurer,
+        baseTextStyle,
+    ) {
+        val buffer = layer.scrollRows
+        val source = if (buffer.isNotEmpty()) buffer else layer.rows
+        val origin = if (buffer.isNotEmpty()) layer.scrollOrigin else 0
+        val start = (origin + scrollBase).coerceIn(0, (source.size - 1).coerceAtLeast(0))
+        val layerRows = minOf(
+            layer.height,
+            visibleRows,
+            (screenRows - layer.startRow).coerceAtLeast(0),
+        )
+        val maxRows = if (layerRows == 0) 0 else layerRows + SCROLL_OVERDRAW_ROWS
+        val count = minOf(maxRows, source.size - start).coerceAtLeast(0)
+
+        NvimPerf.measure("render.compose") {
+            renderCache.render(
+                frame = frame,
+                sourceRows = source.subList(start, start + count),
+                maxRows = count,
+                textMeasurer = textMeasurer,
+                baseStyle = baseTextStyle,
+            )
+        }
+    }
+
+    val viewportRows = minOf(
+        layer.height,
+        visibleRows,
+        (screenRows - layer.startRow).coerceAtLeast(0),
+    ).coerceAtLeast(1)
     Box(
         modifier = Modifier
             .offset(
@@ -539,16 +579,26 @@ private fun NvimLayerView(
                 y = cellHeight * layer.startRow.toFloat(),
             )
             .width(cellWidth * layer.width.toFloat())
-            .height(cellHeight * rows.size.toFloat())
+            .height(cellHeight * viewportRows.toFloat())
             .background(frame.defaultColors.background)
             .clipToBounds(),
     ) {
-        NvimGrid(
-            rows = rows,
-            cellWidth = cellWidth,
-            cellHeight = cellHeight,
-            blinkVisible = blinkVisible,
-        )
+        Box(
+            modifier = Modifier
+                .width(cellWidth * layer.width.toFloat())
+                .height(cellHeight * rows.size.toFloat())
+                .graphicsLayer {
+                    val position = scrollPosition.value
+                    translationY = (floor(position) - position) * cellHeightPx
+                },
+        ) {
+            NvimGrid(
+                rows = rows,
+                cellWidth = cellWidth,
+                cellHeight = cellHeight,
+                blinkVisible = blinkVisible,
+            )
+        }
         layer.cursor?.let { cursor ->
             NvimCursorOverlay(
                 frame = frame,
@@ -558,7 +608,77 @@ private fun NvimLayerView(
                 cellHeight = cellHeight,
                 textMeasurer = textMeasurer,
                 baseTextStyle = baseTextStyle,
+                isScrolling = scrollPosition.value != 0f,
             )
+        }
+    }
+}
+
+/**
+ * Animates the grid offset when scrolling as a damped string
+ */
+@Composable
+private fun rememberSmoothScroll(
+    layer: NvimGridLayer,
+    enabled: Boolean,
+    animationLengthMs: Int,
+): State<Float> {
+    val position = remember { Animatable(0f) }
+    var committedGeneration by remember { mutableLongStateOf(layer.scrollGeneration) }
+    var committedTotal by remember { mutableLongStateOf(layer.scrollTotal) }
+    val generation = layer.scrollGeneration
+    val scrollTotal = layer.scrollTotal
+    val margin = layer.scrollMargin.coerceAtLeast(1)
+    val animationSpec = remember(animationLengthMs) {
+        val seconds = animationLengthMs.coerceAtLeast(1) / 1000f
+        val stiffness = (4f / seconds).let { it * it }
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = stiffness,
+            visibilityThreshold = 0.01f,
+        )
+    }
+
+    LaunchedEffect(generation, enabled) {
+        if (committedGeneration == generation) {
+            position.snapTo(0f)
+            return@LaunchedEffect
+        }
+        if (!enabled) {
+            position.snapTo(0f)
+            committedGeneration = generation
+            committedTotal = scrollTotal
+            return@LaunchedEffect
+        }
+
+        val pending = (scrollTotal - committedTotal).toFloat()
+        if (pending != 0f) {
+            val next = (position.value - pending).coerceIn(-margin.toFloat(), margin.toFloat())
+            position.snapTo(next)
+        }
+        committedGeneration = generation
+        committedTotal = scrollTotal
+        position.animateTo(
+            targetValue = 0f,
+            animationSpec = animationSpec,
+        )
+    }
+
+    return remember(
+        generation,
+        scrollTotal,
+        committedGeneration,
+        committedTotal,
+        margin,
+        position,
+    ) {
+        derivedStateOf {
+            val pending = if (committedGeneration != generation) {
+                (scrollTotal - committedTotal).toFloat()
+            } else {
+                0f
+            }
+            (position.value - pending).coerceIn(-margin.toFloat(), margin.toFloat())
         }
     }
 }
@@ -811,6 +931,7 @@ private fun NvimCursorOverlay(
     cellHeight: Dp,
     textMeasurer: TextMeasurer,
     baseTextStyle: TextStyle,
+    isScrolling: Boolean, // not show glyph when scrolling
 ) {
     val visual = remember(frame, rows, cursor) { frame.cursorVisual(rows, cursor) }
     val visible = rememberCursorVisible(frame.cursorMode, frame.isBusy)
@@ -847,24 +968,26 @@ private fun NvimCursorOverlay(
                     topLeft = Offset(x, y),
                     size = Size(cursorCellWidth, height),
                 )
-                glyphLayout?.let { glyph ->
-                    val glyphWidth = glyph.size.width.toFloat()
-                    if (
-                        visual.cellColumns > 1 &&
-                        glyphWidth > 0f &&
-                        abs(cursorCellWidth - glyphWidth) > 0.5f
-                    ) {
-                        translate(left = x, top = y) {
-                            scale(
-                                scaleX = cursorCellWidth / glyphWidth,
-                                scaleY = 1f,
-                                pivot = Offset.Zero,
-                            ) {
-                                drawText(textLayoutResult = glyph, topLeft = Offset.Zero)
+                if (!isScrolling) {
+                    glyphLayout?.let { glyph ->
+                        val glyphWidth = glyph.size.width.toFloat()
+                        if (
+                            visual.cellColumns > 1 &&
+                            glyphWidth > 0f &&
+                            abs(cursorCellWidth - glyphWidth) > 0.5f
+                        ) {
+                            translate(left = x, top = y) {
+                                scale(
+                                    scaleX = cursorCellWidth / glyphWidth,
+                                    scaleY = 1f,
+                                    pivot = Offset.Zero,
+                                ) {
+                                    drawText(textLayoutResult = glyph, topLeft = Offset.Zero)
+                                }
                             }
+                        } else {
+                            drawText(textLayoutResult = glyph, topLeft = Offset(x, y))
                         }
-                    } else {
-                        drawText(textLayoutResult = glyph, topLeft = Offset(x, y))
                     }
                 }
             }
@@ -1166,6 +1289,8 @@ internal class NvimInputView(context: Context) : View(context) {
 private const val GLOBAL_GRID = 1L
 private val RESIZE_DEBOUNCE_MS: Duration = 100.milliseconds
 private val TEXT_BLINK_INTERVAL_MS: Duration = 500.milliseconds
+
+private const val SCROLL_OVERDRAW_ROWS = 1
 
 // nvim key notations
 private fun CharSequence.toNvimKeys(ctrl: Boolean = false, alt: Boolean = false): String =

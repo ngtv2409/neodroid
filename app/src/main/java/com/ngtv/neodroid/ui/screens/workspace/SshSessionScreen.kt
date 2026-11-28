@@ -116,6 +116,14 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
         .collectAsStateWithLifecycle(
             initialValue = Settings.editorLineHeight.defaultValue,
         )
+    val editorSmoothScroll by settings.getAsFlow(Settings.editorSmoothScroll)
+        .collectAsStateWithLifecycle(
+            initialValue = Settings.editorSmoothScroll.defaultValue,
+        )
+    val editorScrollAnimationLength by settings.getAsFlow(Settings.editorScrollAnimationLength)
+        .collectAsStateWithLifecycle(
+            initialValue = Settings.editorScrollAnimationLength.defaultValue,
+        )
     val editorFontFamily = remember(editorFontKey) {
         EditorFont.fromKey(editorFontKey).fontFamily()
     }
@@ -385,6 +393,8 @@ fun SshSessionScreen(session: WorkspaceSession, onBack: () -> Unit) {
                                         fontFamily = editorFontFamily,
                                         fontSize = editorFontSizeSp,
                                         lineHeight = editorLineHeightSp,
+                                        smoothScroll = editorSmoothScroll,
+                                        scrollAnimationLengthMs = editorScrollAnimationLength,
                                     )
                                 }
                             }
