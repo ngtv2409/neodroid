@@ -5,6 +5,7 @@ package com.ngtv.neodroid.core.events
 import com.ngtv.neodroid.core.NvimNotification
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
+import org.msgpack.core.MessagePack
 
 // https://neovim.io/doc/user/api-ui-events/#_global-events
 // only implement the significant subsets
@@ -68,6 +69,71 @@ sealed interface NvimUiEvent {
         val rows: Long,
         val cols: Long,
     ) : NvimUiEvent
+
+    // Multigrid events
+    // https://neovim.io/doc/user/api-ui-events/#_multigrid-events
+    data class WinPos(
+        val grid: Long,
+        val window: Long,
+        val startRow: Long,
+        val startCol: Long,
+        val width: Long,
+        val height: Long,
+    ) : NvimUiEvent
+
+    data class WinFloatPos(
+        val grid: Long,
+        val window: Long,
+        val anchor: WindowAnchor,
+        val anchorGrid: Long,
+        val anchorRow: Double,
+        val anchorCol: Double,
+        val mouseEnabled: Boolean,
+        val zIndex: Long,
+        val compIndex: Long?,
+        val screenRow: Long?,
+        val screenCol: Long?,
+    ) : NvimUiEvent
+
+    data class WinExternalPos(val grid: Long, val window: Long) : NvimUiEvent
+    data class WinHide(val grid: Long) : NvimUiEvent
+    data class WinClose(val grid: Long) : NvimUiEvent
+
+    data class MsgSetPos(
+        val grid: Long,
+        val row: Long,
+        val scrolled: Boolean,
+        val separator: String?,
+        val zIndex: Long?,
+        val compIndex: Long?,
+    ) : NvimUiEvent
+
+    data class WinViewport(
+        val grid: Long,
+        val window: Long,
+        val topLine: Long,
+        val bottomLine: Long,
+        val currentLine: Long,
+        val currentColumn: Long,
+        val lineCount: Long?,
+        val scrollDelta: Long?,
+    ) : NvimUiEvent
+
+    data class WinViewportMargins(
+        val grid: Long,
+        val window: Long,
+        val top: Long,
+        val bottom: Long,
+        val left: Long,
+        val right: Long,
+    ) : NvimUiEvent
+}
+
+enum class WindowAnchor {
+    NW,
+    NE,
+    SW,
+    SE,
 }
 
 enum class CursorShape {
@@ -115,6 +181,25 @@ data class HighlightAttr(
 
 // sent by grid_line
 data class TextCell(val text: String, val hl_id: Long?, val repeat: Long?)
+
+/**
+ * Neovim encodes Buffer/Window/Tabpage handles as MessagePack extension values
+ * We only need numeric value
+ */
+private fun Any?.asNvimHandle(): Long? = when (this) {
+    is Long -> this
+
+    is Int -> toLong()
+
+    is Map<*, *> -> {
+        val data = this["__ext_data"] as? ByteArray ?: return null
+        runCatching {
+            MessagePack.newDefaultUnpacker(data).use { it.unpackLong() }
+        }.getOrNull()
+    }
+
+    else -> null
+}
 
 internal suspend fun dispatchRedrawEvent(
     inbound: SendChannel<NvimNotification>,
@@ -353,6 +438,117 @@ internal suspend fun dispatchRedrawEvent(
                                 args[4] as Long,
                                 args[5] as Long,
                                 args[6] as Long,
+                            ),
+                        ),
+                    )
+                }
+
+                "win_pos" -> {
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.WinPos(
+                                grid = args[0] as Long,
+                                window = args[1].asNvimHandle() ?: 0L,
+                                startRow = args[2] as Long,
+                                startCol = args[3] as Long,
+                                width = args[4] as Long,
+                                height = args[5] as Long,
+                            ),
+                        ),
+                    )
+                }
+
+                "win_float_pos" -> {
+                    val anchor = when (args[2] as? String) {
+                        "NE" -> WindowAnchor.NE
+                        "SW" -> WindowAnchor.SW
+                        "SE" -> WindowAnchor.SE
+                        else -> WindowAnchor.NW
+                    }
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.WinFloatPos(
+                                grid = args[0] as Long,
+                                window = args[1].asNvimHandle() ?: 0L,
+                                anchor = anchor,
+                                anchorGrid = args[3] as Long,
+                                anchorRow = (args[4] as Number).toDouble(),
+                                anchorCol = (args[5] as Number).toDouble(),
+                                mouseEnabled = args.getOrNull(6) as? Boolean ?: true,
+                                zIndex = (args.getOrNull(7) as? Number)?.toLong() ?: 0L,
+                                compIndex = (args.getOrNull(8) as? Number)?.toLong(),
+                                screenRow = (args.getOrNull(9) as? Number)?.toLong(),
+                                screenCol = (args.getOrNull(10) as? Number)?.toLong(),
+                            ),
+                        ),
+                    )
+                }
+
+                "win_external_pos" -> {
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.WinExternalPos(
+                                grid = args[0] as Long,
+                                window = args[1].asNvimHandle() ?: 0L,
+                            ),
+                        ),
+                    )
+                }
+
+                "win_hide" -> {
+                    inbound.send(
+                        NvimNotification.Redraw(NvimUiEvent.WinHide(args[0] as Long)),
+                    )
+                }
+
+                "win_close" -> {
+                    inbound.send(
+                        NvimNotification.Redraw(NvimUiEvent.WinClose(args[0] as Long)),
+                    )
+                }
+
+                "msg_set_pos" -> {
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.MsgSetPos(
+                                grid = args[0] as Long,
+                                row = args[1] as Long,
+                                scrolled = args[2] as? Boolean ?: false,
+                                separator = args.getOrNull(3) as? String,
+                                zIndex = (args.getOrNull(4) as? Number)?.toLong(),
+                                compIndex = (args.getOrNull(5) as? Number)?.toLong(),
+                            ),
+                        ),
+                    )
+                }
+
+                "win_viewport" -> {
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.WinViewport(
+                                grid = args[0] as Long,
+                                window = args[1].asNvimHandle() ?: 0L,
+                                topLine = args[2] as Long,
+                                bottomLine = args[3] as Long,
+                                currentLine = args[4] as Long,
+                                currentColumn = args[5] as Long,
+                                lineCount = (args.getOrNull(6) as? Number)?.toLong(),
+                                scrollDelta = (args.getOrNull(7) as? Number)?.toLong(),
+                            ),
+                        ),
+                    )
+                }
+
+                "win_viewport_margins" -> {
+                    inbound.send(
+                        NvimNotification.Redraw(
+                            NvimUiEvent.WinViewportMargins(
+                                grid = args[0] as Long,
+                                window = args[1].asNvimHandle() ?: 0L,
+                                top = args[2] as Long,
+                                bottom = args[3] as Long,
+                                left = args[4] as Long,
+                                right = args[5] as Long,
                             ),
                         ),
                     )

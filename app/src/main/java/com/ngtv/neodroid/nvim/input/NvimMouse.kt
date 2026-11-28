@@ -1,5 +1,7 @@
 package com.ngtv.neodroid.nvim.input
 
+data class NvimGridHit(val grid: Long, val row: Int, val col: Int, val url: String?)
+
 data class NvimMouseEvent(
     val button: NvimMouseButton,
     val action: NvimMouseAction,

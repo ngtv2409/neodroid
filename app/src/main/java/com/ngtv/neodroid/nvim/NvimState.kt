@@ -9,12 +9,68 @@ import androidx.compose.ui.text.style.TextDecoration
 import com.ngtv.neodroid.core.events.HighlightAttr
 import com.ngtv.neodroid.core.events.ModeProperty
 import com.ngtv.neodroid.core.events.NvimUiEvent
+import com.ngtv.neodroid.core.events.WindowAnchor
+import com.ngtv.neodroid.nvim.input.NvimGridHit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.text.BreakIterator
 import java.util.ArrayList
+import kotlin.math.roundToInt
 
 data class CursorState(val row: Int = 0, val col: Int = 0)
+
+enum class NvimLayerKind {
+    Global,
+    Window,
+    Floating,
+    Message,
+}
+
+@Immutable
+data class NvimViewportMargins(
+    val top: Int = 0,
+    val bottom: Int = 0,
+    val left: Int = 0,
+    val right: Int = 0,
+)
+
+@Immutable
+data class NvimViewport(
+    val topLine: Int = 0,
+    val bottomLine: Int = 0,
+    val currentLine: Int = 0,
+    val currentColumn: Int = 0,
+    val lineCount: Int? = null,
+    val scrollDelta: Int = 0,
+)
+
+/**
+ * One independently positioned grid sent by Neovim with `ext_multigrid`.
+ *
+ * Grid 1 is the global grid containing the tabline, statuslines, command line
+ * and messages. Editor and floating windows each have their own grid.
+ */
+@Immutable
+data class NvimGridLayer(
+    val grid: Long,
+    val window: Long?,
+    val rows: List<TextRow>,
+    val startRow: Int,
+    val startCol: Int,
+    val width: Int,
+    val zOrder: Int,
+    val kind: NvimLayerKind,
+    val cursor: CursorState? = null,
+    val margins: NvimViewportMargins = NvimViewportMargins(),
+    val mouseEnabled: Boolean = true,
+) {
+    val height: Int
+        get() = rows.size
+
+    fun contains(row: Int, col: Int): Boolean = rows.isNotEmpty() &&
+        row in startRow until startRow + height &&
+        col in startCol until startCol + width
+}
 
 /**
  * A collection of text with the same hl group.
@@ -142,6 +198,17 @@ class TextRow(val spans: List<TextSpan>, val dirtyStart: Int = -1, val dirtyEnd:
         dirtyStart = 0,
         dirtyEnd = columns,
     )
+
+    fun resized(width: Int): TextRow {
+        val newWidth = width.coerceAtLeast(0)
+        if (newWidth == columns) return this
+
+        return TextRow(
+            spans = normalize(extract(0, newWidth, 0), newWidth),
+            dirtyStart = 0,
+            dirtyEnd = maxOf(columns, newWidth),
+        )
+    }
 
     fun extract(startCol: Int, endCol: Int, targetStart: Int): List<TextSpan> {
         val from = startCol.coerceAtLeast(0)
@@ -386,6 +453,8 @@ class NvimFrame(
     val defaultColors: SpanStyle = SpanStyle(color = Color.White, background = Color.Black),
     val defaultSpecial: Color = Color.Unspecified,
     val cursor: CursorState = CursorState(),
+    val activeGrid: Long = 1,
+    val layers: List<NvimGridLayer> = emptyList(),
     val modeInfo: List<ModeProperty> = emptyList(),
     val cursorStyleEnabled: Boolean = true,
     val mode: Int = 0,
@@ -399,6 +468,22 @@ class NvimFrame(
     val cursorMode: ModeProperty?
         get() = if (cursorStyleEnabled) modeInfo.getOrNull(mode) else null
 
+    val primaryLayer: NvimGridLayer?
+        get() = layers.lastOrNull {
+            it.grid == activeGrid &&
+                (it.kind == NvimLayerKind.Window || it.kind == NvimLayerKind.Floating) &&
+                it.rows.isNotEmpty()
+        } ?: layers.lastOrNull {
+            it.kind == NvimLayerKind.Window && it.rows.isNotEmpty()
+        } ?: layers.lastOrNull {
+            it.kind == NvimLayerKind.Floating && it.rows.isNotEmpty()
+        } ?: layers.lastOrNull { it.rows.isNotEmpty() }
+
+    val primaryRows: List<TextRow>
+        get() = primaryLayer?.rows ?: rows
+
+    fun layer(grid: Long): NvimGridLayer? = layers.firstOrNull { it.grid == grid }
+
     fun highlightFor(hlId: Int): NvimHighlight = if (hlId == -1) {
         NvimHighlight.Default
     } else {
@@ -407,11 +492,23 @@ class NvimFrame(
 
     fun highlightForGroup(name: String): NvimHighlight? = hlGroups[name]?.let(::highlightFor)
 
-    fun urlAt(rowIndex: Int, column: Int): String? {
-        val row = rows.getOrNull(rowIndex) ?: return null
-        val span = row.spanAt(column) ?: return null
-        return highlightFor(span.hlId).url
+    /**
+     * Resolves the topmost grid under a screen cell. Mouse events are sent to
+     * this grid using window-local coordinates.
+     */
+    fun hitAt(screenRow: Int, screenColumn: Int): NvimGridHit? {
+        val layer = layers.asReversed().firstOrNull {
+            it.mouseEnabled && it.contains(screenRow, screenColumn)
+        } ?: return null
+
+        val row = screenRow - layer.startRow
+        val column = screenColumn - layer.startCol
+        val span = layer.rows.getOrNull(row)?.spanAt(column)
+        val url = span?.let { highlightFor(it.hlId).url }
+        return NvimGridHit(layer.grid, row, column, url)
     }
+
+    fun urlAt(rowIndex: Int, column: Int): String? = hitAt(rowIndex, column)?.url
 
     override fun equals(other: Any?) = other is NvimFrame && other.generation == generation
     override fun hashCode() = generation.hashCode()
@@ -435,21 +532,27 @@ class NvimStateActor {
     private var cwd: String? = null
     private var hlGroups: Map<String, Int> = emptyMap()
     private var activeGrid: Long? = null
-    private val rows: ArrayList<TextRow> = ArrayList()
-    private var cursor: CursorState = CursorState()
+    private val grids = LinkedHashMap<Long, GridState>()
 
     private val _state = MutableStateFlow(NvimFrame())
     val state = _state.asStateFlow()
 
     private fun publish(): NvimFrame {
+        val layers = buildLayers()
+        val primary = pickPrimaryLayer(layers)
+        val activeCursor = activeGrid?.let { grids[it]?.cursor }
+        val cursor = activeCursor ?: primary?.cursor ?: CursorState()
+
         generation += 1
         return NvimFrame(
             generation = generation,
-            rows = rows.toList(),
+            rows = primary?.rows ?: emptyList(),
             styles = styles,
             defaultColors = defaultColors,
             defaultSpecial = defaultSpecial,
             cursor = cursor,
+            activeGrid = activeGrid ?: primary?.grid ?: 1L,
+            layers = layers,
             modeInfo = modeInfo,
             cursorStyleEnabled = cursorStyleEnabled,
             mode = modeIndex.toInt(),
@@ -460,6 +563,123 @@ class NvimStateActor {
             cwd = cwd,
             hlGroups = hlGroups,
         )
+    }
+
+    private fun pickPrimaryLayer(layers: List<NvimGridLayer>): NvimGridLayer? {
+        val active = activeGrid
+        if (active != null) {
+            layers.lastOrNull {
+                it.grid == active &&
+                    (it.kind == NvimLayerKind.Window || it.kind == NvimLayerKind.Floating) &&
+                    it.rows.isNotEmpty()
+            }?.let { return it }
+        }
+        return layers.lastOrNull {
+            it.kind == NvimLayerKind.Window && it.rows.isNotEmpty()
+        } ?: layers.lastOrNull {
+            it.kind == NvimLayerKind.Floating && it.rows.isNotEmpty()
+        } ?: layers.lastOrNull { it.rows.isNotEmpty() }
+    }
+
+    private fun buildLayers(): List<NvimGridLayer> {
+        val layerList = ArrayList<NvimGridLayer>(grids.size)
+        grids.values.forEach { grid ->
+            if (grid.hidden || grid.external || grid.rows.isEmpty() || grid.width <= 0) {
+                return@forEach
+            }
+
+            val (startRow, startCol) = if (grid.kind == NvimLayerKind.Floating) {
+                floatingPosition(grid)
+            } else {
+                grid.startRow to grid.startCol
+            }
+
+            val zOrder = when (grid.kind) {
+                NvimLayerKind.Global -> GLOBAL_Z
+
+                NvimLayerKind.Window -> WINDOW_Z
+
+                NvimLayerKind.Floating ->
+                    FLOAT_Z + (grid.compIndex ?: grid.zIndex).toInt()
+
+                NvimLayerKind.Message ->
+                    MESSAGE_Z + (grid.compIndex ?: grid.zIndex).toInt()
+            }
+
+            layerList.add(
+                NvimGridLayer(
+                    grid = grid.id,
+                    window = grid.window,
+                    rows = grid.rows.toList(),
+                    startRow = startRow.coerceAtLeast(0),
+                    startCol = startCol.coerceAtLeast(0),
+                    width = grid.width,
+                    zOrder = zOrder,
+                    kind = grid.kind,
+                    cursor = grid.cursor.takeIf { activeGrid == grid.id },
+                    margins = grid.margins,
+                    mouseEnabled = grid.mouseEnabled,
+                ),
+            )
+        }
+
+        layerList.sortBy { it.zOrder }
+        return layerList
+    }
+
+    private fun floatingPosition(grid: GridState): Pair<Int, Int> {
+        val screenRow = grid.screenRow
+        val screenCol = grid.screenCol
+        if (screenRow != null && screenCol != null) {
+            return screenRow.toInt() to screenCol.toInt()
+        }
+
+        val anchor = grids[grid.anchorGrid]
+        val anchorRow = anchor?.startRow ?: 0
+        val anchorCol = anchor?.startCol ?: 0
+        val rowOffset = grid.anchorRow.roundToInt()
+        val colOffset = grid.anchorCol.roundToInt()
+
+        var row = anchorRow + rowOffset
+        var col = anchorCol + colOffset
+        when (grid.anchor) {
+            WindowAnchor.NW -> Unit
+
+            WindowAnchor.NE -> col -= grid.width
+
+            WindowAnchor.SW -> row -= grid.height
+
+            WindowAnchor.SE -> {
+                row -= grid.height
+                col -= grid.width
+            }
+        }
+        return row to col
+    }
+
+    private fun grid(id: Long): GridState = grids.getOrPut(id) { GridState(id) }
+
+    private fun resizeGrid(grid: GridState, width: Int, height: Int) {
+        // grid_resize does not clear the grid: Nvim only sends the cells that
+        // changed. Keep overlapping content and trim/extend around it.
+        val newWidth = width.coerceAtLeast(0)
+        val newHeight = height.coerceAtLeast(0)
+        val widthChanged = grid.width != newWidth
+
+        grid.width = newWidth
+        grid.height = newHeight
+
+        while (grid.rows.size > newHeight) {
+            grid.rows.removeAt(grid.rows.lastIndex)
+        }
+        while (grid.rows.size < newHeight) {
+            grid.rows.add(TextRow.blank(newWidth))
+        }
+        if (widthChanged) {
+            for (index in grid.rows.indices) {
+                grid.rows[index] = grid.rows[index].resized(newWidth)
+            }
+        }
     }
 
     fun apply(event: NvimUiEvent) {
@@ -521,42 +741,126 @@ class NvimStateActor {
             }
 
             is NvimUiEvent.GridResize -> {
-                activeGrid = event.grid
-                rows.clear()
-                repeat(event.height.toInt().coerceAtLeast(0)) {
-                    rows.add(TextRow.blank(event.width.toInt()))
+                val grid = grid(event.grid)
+                if (event.grid == GLOBAL_GRID) {
+                    grid.kind = NvimLayerKind.Global
                 }
+                resizeGrid(
+                    grid = grid,
+                    width = event.width.toInt(),
+                    height = event.height.toInt(),
+                )
             }
 
             is NvimUiEvent.GridLine -> applyGridLine(event)
 
             is NvimUiEvent.GridClear -> {
-                for (i in rows.indices) rows[i] = rows[i].cleared()
+                val grid = grids[event.grid] ?: return
+                for (i in grid.rows.indices) grid.rows[i] = grid.rows[i].cleared()
             }
 
             is NvimUiEvent.GridDestroy -> {
-                if (activeGrid == null || event.grid == activeGrid) {
-                    rows.clear()
-                    cursor = CursorState()
-                    activeGrid = null
-                }
+                grids.remove(event.grid)
+                if (activeGrid == event.grid) activeGrid = null
             }
 
             is NvimUiEvent.GridCursorGoto -> {
-                cursor = CursorState(event.row.toInt(), event.col.toInt())
+                val grid = grid(event.grid)
+                grid.cursor = CursorState(event.row.toInt(), event.col.toInt())
+                activeGrid = event.grid
             }
 
             is NvimUiEvent.GridScroll -> applyGridScroll(event)
+
+            is NvimUiEvent.WinPos -> {
+                val grid = grid(event.grid)
+                if (event.grid != GLOBAL_GRID) grid.kind = NvimLayerKind.Window
+                grid.window = event.window
+                grid.startRow = event.startRow.toInt()
+                grid.startCol = event.startCol.toInt()
+                grid.floating = false
+                grid.external = false
+                grid.hidden = false
+                grid.mouseEnabled = true
+                resizeGrid(grid, event.width.toInt(), event.height.toInt())
+            }
+
+            is NvimUiEvent.WinFloatPos -> {
+                val grid = grid(event.grid)
+                grid.kind = NvimLayerKind.Floating
+                grid.window = event.window
+                grid.floating = true
+                grid.external = false
+                grid.hidden = false
+                grid.anchor = event.anchor
+                grid.anchorGrid = event.anchorGrid
+                grid.anchorRow = event.anchorRow
+                grid.anchorCol = event.anchorCol
+                grid.mouseEnabled = event.mouseEnabled
+                grid.zIndex = event.zIndex
+                grid.compIndex = event.compIndex
+                grid.screenRow = event.screenRow
+                grid.screenCol = event.screenCol
+            }
+
+            is NvimUiEvent.WinExternalPos -> {
+                val grid = grid(event.grid)
+                grid.window = event.window
+                grid.external = true
+            }
+
+            is NvimUiEvent.WinHide -> {
+                grids[event.grid]?.hidden = true
+            }
+
+            is NvimUiEvent.WinClose -> {
+                grids.remove(event.grid)
+                if (activeGrid == event.grid) activeGrid = null
+            }
+
+            is NvimUiEvent.MsgSetPos -> {
+                val grid = grid(event.grid)
+                grid.kind = NvimLayerKind.Message
+                grid.startRow = event.row.toInt()
+                grid.startCol = 0
+                grid.zIndex = event.zIndex ?: 0L
+                grid.compIndex = event.compIndex
+                grid.hidden = false
+                if (grid.width <= 0) grid.width = grids[GLOBAL_GRID]?.width ?: 0
+            }
+
+            is NvimUiEvent.WinViewport -> {
+                val grid = grids[event.grid] ?: return
+                grid.viewport = NvimViewport(
+                    topLine = event.topLine.toInt(),
+                    bottomLine = event.bottomLine.toInt(),
+                    currentLine = event.currentLine.toInt(),
+                    currentColumn = event.currentColumn.toInt(),
+                    lineCount = event.lineCount?.toInt(),
+                    scrollDelta = event.scrollDelta?.toInt() ?: 0,
+                )
+            }
+
+            is NvimUiEvent.WinViewportMargins -> {
+                val grid = grids[event.grid] ?: return
+                grid.margins = NvimViewportMargins(
+                    top = event.top.toInt(),
+                    bottom = event.bottom.toInt(),
+                    left = event.left.toInt(),
+                    right = event.right.toInt(),
+                )
+            }
 
             else -> Unit
         }
     }
 
     private fun applyGridLine(event: NvimUiEvent.GridLine) {
+        val grid = grids[event.grid] ?: return
         val rowIndex = event.row.toInt()
-        if (rowIndex !in rows.indices) return
+        if (rowIndex !in grid.rows.indices) return
 
-        val row = rows[rowIndex]
+        val row = grid.rows[rowIndex]
         val startCol = event.col_start.toInt().coerceAtLeast(0)
         val replacement = ArrayList<TextSpan>(event.cells.size + 1)
         var replacementStart = Int.MAX_VALUE
@@ -629,11 +933,13 @@ class NvimStateActor {
         }
 
         if (replacement.isNotEmpty()) {
-            rows[rowIndex] = row.patch(replacementStart, replacement)
+            grid.rows[rowIndex] = row.patch(replacementStart, replacement)
         }
     }
 
     private fun applyGridScroll(event: NvimUiEvent.GridScroll) {
+        val grid = grids[event.grid] ?: return
+        val rows = grid.rows
         val width = rows.firstOrNull()?.columns ?: return
         val top = event.top.toInt().coerceIn(0, rows.size)
         val bot = event.bot.toInt().coerceIn(top, rows.size)
@@ -645,13 +951,19 @@ class NvimStateActor {
         if (left >= right) return
 
         if (left == 0 && right == width) {
-            scrollFullWidth(top, bot, rowDelta, width)
+            scrollFullWidth(rows, top, bot, rowDelta, width)
         } else {
-            scrollPartialWidth(top, bot, rowDelta, width, left, right)
+            scrollPartialWidth(rows, top, bot, rowDelta, width, left, right)
         }
     }
 
-    private fun scrollFullWidth(top: Int, bot: Int, rowDelta: Int, width: Int) {
+    private fun scrollFullWidth(
+        rows: MutableList<TextRow>,
+        top: Int,
+        bot: Int,
+        rowDelta: Int,
+        width: Int,
+    ) {
         if (rowDelta > 0) {
             val count = rowDelta.coerceAtMost(bot - top)
             for (row in top until bot - count) {
@@ -672,6 +984,7 @@ class NvimStateActor {
     }
 
     private fun scrollPartialWidth(
+        rows: MutableList<TextRow>,
         top: Int,
         bot: Int,
         rowDelta: Int,
@@ -702,6 +1015,41 @@ class NvimStateActor {
         }
     }
 }
+
+private class GridState(val id: Long) {
+    var width: Int = 0
+    var height: Int = 0
+    val rows = ArrayList<TextRow>()
+    var cursor: CursorState? = null
+    var window: Long? = null
+    var kind: NvimLayerKind = if (id == GLOBAL_GRID) {
+        NvimLayerKind.Global
+    } else {
+        NvimLayerKind.Window
+    }
+    var startRow: Int = 0
+    var startCol: Int = 0
+    var floating: Boolean = false
+    var external: Boolean = false
+    var hidden: Boolean = false
+    var anchor: WindowAnchor = WindowAnchor.NW
+    var anchorGrid: Long = GLOBAL_GRID
+    var anchorRow: Double = 0.0
+    var anchorCol: Double = 0.0
+    var screenRow: Long? = null
+    var screenCol: Long? = null
+    var zIndex: Long = 0L
+    var compIndex: Long? = null
+    var mouseEnabled: Boolean = true
+    var margins: NvimViewportMargins = NvimViewportMargins()
+    var viewport: NvimViewport? = null
+}
+
+private const val GLOBAL_GRID = 1L
+private const val GLOBAL_Z = -1000
+private const val WINDOW_Z = 0
+private const val FLOAT_Z = 1000
+private const val MESSAGE_Z = 10000
 
 private fun splitLastCellForWide(span: TextSpan): Pair<TextSpan?, TextSpan>? {
     if (span.wide) return null

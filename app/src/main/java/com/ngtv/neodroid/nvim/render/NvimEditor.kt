@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -64,9 +65,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ngtv.neodroid.core.events.CursorShape
 import com.ngtv.neodroid.core.events.ModeProperty
+import com.ngtv.neodroid.nvim.CursorState
 import com.ngtv.neodroid.nvim.NvimFrame
+import com.ngtv.neodroid.nvim.NvimGridLayer
 import com.ngtv.neodroid.nvim.NvimHighlight
+import com.ngtv.neodroid.nvim.NvimLayerKind
+import com.ngtv.neodroid.nvim.TextRow
 import com.ngtv.neodroid.nvim.input.NvimGestureView
+import com.ngtv.neodroid.nvim.input.NvimGridHit
 import com.ngtv.neodroid.nvim.input.NvimMouseEvent
 import com.ngtv.neodroid.perf.NvimPerf
 import kotlinx.coroutines.delay
@@ -156,9 +162,14 @@ fun NvimEditor(
     }
 
     fun selectAll(columns: Int) {
-        val lastRow = frame.rows.lastIndex
+        val primaryRows = frame.primaryRows
+        val lastRow = primaryRows.lastIndex
         if (lastRow < 0) return
-        val lastColumn = (frame.rows.maxOfOrNull { it.columns } ?: columns)
+        val lastColumn = (
+            frame.primaryLayer?.width
+                ?: primaryRows.maxOfOrNull { it.columns }
+                ?: columns
+            )
             .coerceAtLeast(1)
             .minus(1)
         selection = GridSelection(
@@ -207,7 +218,26 @@ fun NvimEditor(
             onResize(columns, visibleRows)
         }
 
-        if (frame.rows.isEmpty()) {
+        val layers = if (frame.layers.any { it.rows.isNotEmpty() }) {
+            frame.layers
+        } else if (frame.rows.isNotEmpty()) {
+            listOf(
+                NvimGridLayer(
+                    grid = 1L,
+                    window = null,
+                    rows = frame.rows,
+                    startRow = 0,
+                    startCol = 0,
+                    width = frame.rows.maxOfOrNull { it.columns } ?: 0,
+                    zOrder = 0,
+                    kind = NvimLayerKind.Global,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+
+        if (layers.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -215,48 +245,55 @@ fun NvimEditor(
                 Text("Waiting for Neovim UI...")
             }
         } else {
-            val renderedRows = remember(
+            val renderedLayers = remember(
                 frame,
+                layers,
                 visibleRows,
                 renderCache,
                 textMeasurer,
                 baseTextStyle,
             ) {
                 NvimPerf.measure("render.compose") {
-                    renderCache.render(
-                        frame = frame,
-                        maxRows = visibleRows,
-                        textMeasurer = textMeasurer,
-                        baseStyle = baseTextStyle,
-                    )
+                    layers.map { layer ->
+                        layer to renderCache.render(
+                            frame = frame,
+                            sourceRows = layer.rows,
+                            maxRows = visibleRows,
+                            textMeasurer = textMeasurer,
+                            baseStyle = baseTextStyle,
+                        )
+                    }
                 }
             }
             val blinkVisible = rememberTextBlinkVisible(frame)
             val uriHandler = LocalUriHandler.current
+            val primaryLayer = frame.primaryLayer
 
             Box(
                 modifier = Modifier
                     .width(cellWidth * columns.toFloat())
-                    .height(cellHeight * visibleRows.toFloat()),
+                    .height(cellHeight * visibleRows.toFloat())
+                    .clipToBounds(),
             ) {
-                NvimGrid(
-                    rows = renderedRows,
-                    cellWidth = cellWidth,
-                    cellHeight = cellHeight,
-                    blinkVisible = blinkVisible,
-                )
+                renderedLayers.forEach { (layer, renderedRows) ->
+                    key(layer.grid) {
+                        NvimLayerView(
+                            layer = layer,
+                            rows = renderedRows,
+                            frame = frame,
+                            cellWidth = cellWidth,
+                            cellHeight = cellHeight,
+                            blinkVisible = blinkVisible,
+                            textMeasurer = textMeasurer,
+                            baseTextStyle = baseTextStyle,
+                        )
+                    }
+                }
                 NvimSelectionOverlay(
                     selection = selection,
                     cellWidth = cellWidth,
                     cellHeight = cellHeight,
-                    columns = columns,
-                )
-                NvimCursorOverlay(
-                    frame = frame,
-                    cellWidth = cellWidth,
-                    cellHeight = cellHeight,
-                    textMeasurer = textMeasurer,
-                    baseTextStyle = baseTextStyle,
+                    columns = primaryLayer?.width?.coerceAtLeast(1) ?: columns,
                 )
                 NvimGestureOverlay(
                     cellWidthPx = with(density) { cellWidth.toPx() },
@@ -265,7 +302,7 @@ fun NvimEditor(
                     rows = visibleRows,
                     hasSelection = selection != null,
                     selectionMode = selectionMode,
-                    urlAt = frame::urlAt,
+                    hitTest = frame::hitAt,
                     onOpenUrl = { url ->
                         runCatching { uriHandler.openUri(url) }.onFailure {
                             onOpenUrlError("Could not open link: $url")
@@ -339,7 +376,8 @@ private enum class GridMenuKind { Context, Selection }
 private data class GridMenu(val kind: GridMenuKind, val cell: GridCell)
 
 private fun NvimFrame.selectedText(selection: GridSelection): String {
-    val lastRow = rows.lastIndex
+    val selectedRows = primaryRows
+    val lastRow = selectedRows.lastIndex
     if (lastRow < 0) return ""
 
     val normalized = selection.normalized()
@@ -350,7 +388,7 @@ private fun NvimFrame.selectedText(selection: GridSelection): String {
     for (rowIndex in startRow..endRow) {
         if (rowIndex > startRow) builder.append('\n')
 
-        val row = rows.getOrNull(rowIndex) ?: continue
+        val row = selectedRows.getOrNull(rowIndex) ?: continue
         val rowColumns = row.columns
         val from = if (rowIndex == startRow) {
             normalized.anchor.col.coerceIn(0, rowColumns)
@@ -462,6 +500,49 @@ private fun NvimGridMenu(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NvimLayerView(
+    layer: NvimGridLayer,
+    rows: List<RenderedRow>,
+    frame: NvimFrame,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    blinkVisible: Boolean,
+    textMeasurer: TextMeasurer,
+    baseTextStyle: TextStyle,
+) {
+    if (rows.isEmpty() || layer.width <= 0) return
+
+    Box(
+        modifier = Modifier
+            .offset(
+                x = cellWidth * layer.startCol.toFloat(),
+                y = cellHeight * layer.startRow.toFloat(),
+            )
+            .width(cellWidth * layer.width.toFloat())
+            .height(cellHeight * rows.size.toFloat())
+            .clipToBounds(),
+    ) {
+        NvimGrid(
+            rows = rows,
+            cellWidth = cellWidth,
+            cellHeight = cellHeight,
+            blinkVisible = blinkVisible,
+        )
+        layer.cursor?.let { cursor ->
+            NvimCursorOverlay(
+                frame = frame,
+                rows = layer.rows,
+                cursor = cursor,
+                cellWidth = cellWidth,
+                cellHeight = cellHeight,
+                textMeasurer = textMeasurer,
+                baseTextStyle = baseTextStyle,
+            )
         }
     }
 }
@@ -708,12 +789,14 @@ private data class CursorVisual(
 @Composable
 private fun NvimCursorOverlay(
     frame: NvimFrame,
+    rows: List<TextRow>,
+    cursor: CursorState,
     cellWidth: Dp,
     cellHeight: Dp,
     textMeasurer: TextMeasurer,
     baseTextStyle: TextStyle,
 ) {
-    val visual = remember(frame) { frame.cursorVisual() }
+    val visual = remember(frame, rows, cursor) { frame.cursorVisual(rows, cursor) }
     val visible = rememberCursorVisible(frame.cursorMode, frame.isBusy)
 
     val glyphLayout = remember(visual, textMeasurer, baseTextStyle) {
@@ -736,8 +819,8 @@ private fun NvimCursorOverlay(
 
         val width = cellWidth.toPx()
         val height = cellHeight.toPx()
-        val x = frame.cursor.col * width
-        val y = frame.cursor.row * height
+        val x = cursor.col * width
+        val y = cursor.row * height
         val fraction = visual.percentage / 100f
         val cursorCellWidth = width * visual.cellColumns
 
@@ -822,7 +905,7 @@ private fun rememberCursorVisible(mode: ModeProperty?, busy: Boolean): Boolean {
 /**
  * Resolves the colors and glyph used to draw the cursor at the current cell.
  */
-private fun NvimFrame.cursorVisual(): CursorVisual {
+private fun NvimFrame.cursorVisual(rows: List<TextRow>, cursor: CursorState): CursorVisual {
     val mode = cursorMode
     val shape = mode?.cursor_shape ?: CursorShape.BLOCK
     val defaultPercentage = if (shape == CursorShape.BLOCK) 100L else 25L
@@ -830,7 +913,6 @@ private fun NvimFrame.cursorVisual(): CursorVisual {
         .toInt()
         .coerceIn(1, 100)
 
-    val cursor = cursor
     val row = rows.getOrNull(cursor.row)
     val span = row?.spans?.firstOrNull { cursor.col in it.startCol until it.endCol }
     val cellHighlight = span?.let { highlightFor(it.hlId) } ?: NvimHighlight.Default
@@ -883,7 +965,7 @@ private fun NvimGestureOverlay(
     rows: Int,
     hasSelection: Boolean,
     selectionMode: Boolean,
-    urlAt: (row: Int, col: Int) -> String?,
+    hitTest: (row: Int, col: Int) -> NvimGridHit?,
     onOpenUrl: (String) -> Unit,
     onMouse: (NvimMouseEvent) -> Unit,
     takeModifiers: () -> String,
@@ -893,7 +975,7 @@ private fun NvimGestureOverlay(
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val currentUrlAt by rememberUpdatedState(urlAt)
+    val currentHitTest by rememberUpdatedState(hitTest)
     val currentOnOpenUrl by rememberUpdatedState(onOpenUrl)
     val currentOnMouse by rememberUpdatedState(onMouse)
     val currentTakeModifiers by rememberUpdatedState(takeModifiers)
@@ -911,7 +993,7 @@ private fun NvimGestureOverlay(
             view.cellHeightPx = cellHeightPx.coerceAtLeast(1f)
             view.hasSelection = hasSelection
             view.selectionMode = selectionMode
-            view.urlAt = currentUrlAt
+            view.hitTest = currentHitTest
             view.onOpenUrl = currentOnOpenUrl
             view.onMouse = currentOnMouse
             view.takeModifiers = currentTakeModifiers

@@ -31,7 +31,7 @@ class NvimGestureView(context: Context) : View(context) {
     var cellWidthPx: Float = 1f
     var cellHeightPx: Float = 1f
     var takeModifiers: () -> String = { "" }
-    var urlAt: (row: Int, col: Int) -> String? = { _, _ -> null }
+    var hitTest: (row: Int, col: Int) -> NvimGridHit? = { _, _ -> null }
     var onOpenUrl: (String) -> Unit = {}
     var onMouse: (NvimMouseEvent) -> Unit = {}
     var hasSelection: Boolean = false
@@ -349,7 +349,7 @@ class NvimGestureView(context: Context) : View(context) {
         when (touchMode) {
             TouchMode.Pending -> {
                 val cell = cellFor(event.x, event.y)
-                val url = urlAt(cell.first, cell.second)
+                val url = hitTest(cell.first, cell.second)?.url
                 if (url != null) {
                     performClick()
                     onOpenUrl(url)
@@ -592,7 +592,7 @@ class NvimGestureView(context: Context) : View(context) {
         mouseRow = cell.first
         mouseCol = cell.second
         pressedUrl = if (button == NvimMouseButton.Left) {
-            urlAt(cell.first, cell.second)
+            hitTest(cell.first, cell.second)?.url
         } else {
             null
         }
@@ -730,16 +730,18 @@ class NvimGestureView(context: Context) : View(context) {
         button: NvimMouseButton,
         action: NvimMouseAction,
         modifier: String,
-        row: Int,
-        col: Int,
+        screenRow: Int,
+        screenCol: Int,
     ) {
+        val hit = hitTest(screenRow, screenCol)
         onMouse(
             NvimMouseEvent(
                 button = button,
                 action = action,
                 modifier = modifier,
-                row = row,
-                col = col,
+                grid = hit?.grid?.toInt() ?: 0,
+                row = hit?.row ?: screenRow,
+                col = hit?.col ?: screenCol,
             ),
         )
     }

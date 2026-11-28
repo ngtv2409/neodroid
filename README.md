@@ -3,8 +3,8 @@
 A GUI Neovim client for Android over SSH.
 
 Neodroid connects to a remote host over SSH, and spawns `nvim --embed` or attaches to
-an existing Neovim instance through a UNIX socket, and renders the Neovim `ext_linegrid`
-UI on a native android canvas.
+an existing Neovim instance through a UNIX socket, and renders the Neovim
+`ext_linegrid`/`ext_multigrid` UI on a native android canvas.
 
 ## Table of Contents
 
@@ -64,8 +64,10 @@ Note that this allows the remote host to read your phone's clipboard at any time
 ## Limitations
 
 - Neovim API versions are not handled.
-- Multi-grid (`ext_multigrid`) is not implemented; only the `ext_linegrid` single-grid
-  subset is rendered.
+- External windows (`win_external_pos`) are not rendered; they are intended for
+  separate top-level desktop windows.
+- Text selection and copy remain tied to the active editor window when splits or
+  floating windows are visible.
 - SSH agent authentication is not supported.
 - Recent connections are in-memory only and reset when the service restarts.
 

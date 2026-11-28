@@ -114,6 +114,20 @@ internal class NvimRenderCache {
         maxRows: Int,
         textMeasurer: TextMeasurer,
         baseStyle: TextStyle,
+    ): List<RenderedRow> = render(
+        frame = frame,
+        sourceRows = frame.rows,
+        maxRows = maxRows,
+        textMeasurer = textMeasurer,
+        baseStyle = baseStyle,
+    )
+
+    fun render(
+        frame: NvimFrame,
+        sourceRows: List<TextRow>,
+        maxRows: Int,
+        textMeasurer: TextMeasurer,
+        baseStyle: TextStyle,
     ): List<RenderedRow> {
         if (
             cachedStyles != frame.styles ||
@@ -131,11 +145,11 @@ internal class NvimRenderCache {
             }
         }
 
-        val count = minOf(frame.rows.size, maxRows.coerceAtLeast(0))
+        val count = minOf(sourceRows.size, maxRows.coerceAtLeast(0))
         val result = ArrayList<RenderedRow>(count)
 
         for (index in 0 until count) {
-            val row = frame.rows[index]
+            val row = sourceRows[index]
             val rendered = rows[row] ?: buildRow(
                 row = row,
                 frame = frame,
@@ -151,8 +165,12 @@ internal class NvimRenderCache {
     }
 
     private fun evictRows(frame: NvimFrame) {
-        if (rows.size <= frame.rows.size * 2 + 64) return
-        rows.keys.retainAll(frame.rows.toHashSet())
+        val liveRows = HashSet<TextRow>()
+        liveRows.addAll(frame.rows)
+        frame.layers.forEach { liveRows.addAll(it.rows) }
+        val limit = liveRows.size * 2 + 64
+        if (rows.size <= limit) return
+        rows.keys.retainAll(liveRows)
     }
 
     private fun buildRow(

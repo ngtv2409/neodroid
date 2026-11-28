@@ -167,6 +167,7 @@ class NvimSession private constructor(val nvim: NeovimClient) : Closeable {
             val attachOpts = mapOf(
                 "rgb" to true,
                 "ext_linegrid" to true,
+                "ext_multigrid" to true,
             )
 
             nvim.set_client_info(
