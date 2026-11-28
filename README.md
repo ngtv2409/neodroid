@@ -24,6 +24,8 @@ an existing Neovim instance through a UNIX socket, and renders the Neovim
 - Host key verification with trust-on-first-use pinning and an mismatch flow.
 - An extra keys bar, and remote clipboard integration.
 - You can connect to an ssh server running on the same phone (Termux) as well.
+- Smooth scrolling
+- Integration (clipboard)
 
 ## Requirements
 
@@ -56,10 +58,26 @@ Everything are tested against my local nvim installation (v0.12.5).
 
 ## Integration
 
-Remote clipboard support requires sourcing [`integration/neodroid.lua`](integration/neodroid.lua)
-from your remote `init.lua` when `vim.g.neodroid == 1`, and enabling
-**Settings - Integration - Clipboard - Allow remote clipboard** in the app.
+Integration plugin is located in [lua/](lua). You can use it with your favourite plugin manager.
+It is in its early stage and has no config yet.
+
+### Lazy
+```lua
+{
+    "ngtv2409/neodroid"
+}
+```
+
+After you have installed the plugin, do:
+```lua
+require("neodroid").setup()
+```
+
+Clipboard requires **Settings - Integration - Clipboard - Allow remote clipboard** in the app.
 Note that this allows the remote host to read your phone's clipboard at any time.
+
+### Integration features
+- Clipboard
 
 ## Limitations
 
